@@ -11,8 +11,8 @@
 | 1 | 架构摸底 → 01-architecture.md | ✅ | 13 个模块、8 类线程；审查顺序 hotkey/winapi → d3d/capture → main → config → watcher → toast → output → instance/dualsense → build/not_games → tests |
 | 2 | 代码审查 → 02-findings.md | ✅ | 3 个 code-reviewer 子代理分组审查 + 逐条核实：高 2、中 8、低 18、待确认 9；H2 已在 Linux 复现 |
 | 3 | 安全审计 → 02-findings.md「安全」 | ✅ | 无注入、无不安全反序列化、无硬编码密钥；M9 Pillow 下限允许有已知漏洞的版本（可利用性低）；L19–L21 加固项 |
-| 4 | 修复高危问题，PR → main | 🔄 | |
-| 5 | 性能分析 → 03-perf-plan.md | ⬜ | |
+| 4 | 修复高危问题，PR → main | ✅ | H2 93f99bf、H1 d7b4f29；PR https://github.com/OranngeAustin/game_snap/pull/1 （未合并）；Linux 上失败数未增加，需回 Windows 验证 |
+| 5 | 性能分析 → 03-perf-plan.md | 🔄 | |
 | 6 | 算法优化（前 3 项），PR → claude/review-fixes | ⬜ | |
 | 7 | 总结 → 00-SUMMARY.md | ⬜ | |
 
@@ -55,3 +55,15 @@ gamesnap-build 跑 quick / all」。
   （H1、H2）注明「两个来源」。被核实推翻的（「HRESULT 不检查、把 NULL 传进驱动」）列在「已核对、没发现问题」。
 - **D4 测试桩**：新增 `tests/winstubs.py`，只在非 Windows 上把 `ctypes.WinDLL` / `winsound` / `winreg` 换成桩，让项目模块能在
   Linux 上 import；Windows 上什么都不做。用它的测试只测纯逻辑。
+
+## 阶段 4：修复记录
+
+| 编号 | 提交 | 测试（Linux 容器） | Windows 验证 |
+|---|---|---|---|
+| H2 | 93f99bf | test_config 修复前 7 项失败 → 全过；quick 失败数 4 → 4 | 待做：quick |
+| H1 | d7b4f29 | 只能确认能 import、类名各不相同；listener_restart 在 Linux 上 SKIP；quick 失败数 4 → 4 | 待做：quick（含 listener_restart）+ all |
+
+- **D5 H1 的修法**：子代理提了两种：模块级常驻 WNDPROC 按 hwnd 分发，或每个窗口一个类名。选后者：改动最小（3 个文件、
+  约 30 行），不引入新的全局状态；代价是每个监听多注册一个窗口类，窗口销毁后注销。
+- **D6 H2 的修法**：只做「另存 + utf-8-sig」，不做「禁止覆盖 + 弹窗」：后者改变交互，留给用户决定（02-findings H2）。
+- **D7 PR**：阶段 4 的 PR 就是 `claude/review-fixes → main`，审查文档和后续阶段的文档也在这个分支上，会一并出现在 PR 里。
