@@ -62,7 +62,8 @@ def copy_to_clipboard(img: Image.Image) -> bool:
     import win32clipboard
 
     buf = io.BytesIO()
-    img.convert("RGB").save(buf, "BMP")
+    # 截图本来就是 RGB：不再 convert，省一次整帧拷贝（4K 一帧约 24MB）
+    (img if img.mode == "RGB" else img.convert("RGB")).save(buf, "BMP")
     dib = buf.getvalue()[14:]  # 去掉 14 字节 BITMAPFILEHEADER 就是 CF_DIB
     for _ in range(10):
         try:
