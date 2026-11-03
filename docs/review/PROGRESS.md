@@ -14,7 +14,7 @@
 | 4 | 修复高危问题，PR → main | ✅ | H2 93f99bf、H1 d7b4f29；PR https://github.com/OranngeAustin/game_snap/pull/1 （未合并）；Linux 上失败数未增加，需回 Windows 验证 |
 | 5 | 性能分析 → 03-perf-plan.md | ✅ | 新增 tests/bench_logic.py；每张截图 Python 侧约 247 ms，save_png 占 89% 但只能改输出提速（不选）；选 P1 剪贴板 DIB、P2 托盘图标缓存、P3 提示字体缓存 |
 | 6 | 算法优化（前 3 项），PR → claude/review-fixes | ✅ | P1 剪贴板 -40%～-60%（#2）、P2 托盘图标 -99.8%（#3）、P3 提示卡片重复时 -99.9%（#4）；都先补特征测试，输出逐字节不变 |
-| 7 | 总结 → 00-SUMMARY.md | 🔄 | |
+| 7 | 总结 → 00-SUMMARY.md | ✅ | 00-SUMMARY.md：完成内容、PR #1–#4、跳过项、待人工确认、下一步建议 |
 
 ## 阶段 0：基线
 
@@ -86,3 +86,13 @@ gamesnap-build 跑 quick / all」。
   `claude/perf-toast-card-cache`（改名时还没推送）。
 - **D10 优化 PR 的基准测法**：容器里同一项各轮可差 30%，所以每项都在同一时段测优化前后；P3 交替 A/B 各 3 次。
   PR 描述里都只给相对提升。
+- **D11 试合并**：为确认 PR #2–#4 合进 `claude/review-fixes` 时互不冲突，在本地建了临时分支 `tmp-merge-check`
+  依次合并（都无冲突，quick 6 过 4 失败，失败的仍是 4 个环境原因），试完删掉了这个**只在本地、从未推送**的临时分支。
+  远端分支一个都没删。
+
+## 最终状态
+
+- 阶段 0–7 全部 ✅；没有推送 main、没有 force push、没有合并 PR、没有删除远端分支。
+- 跳过的（都写明了原因，见各阶段和 00-SUMMARY.md「跳过的项和原因」）：Windows 专属测试（quick 4 个、all 5 个、
+  listener_restart 的真正运行）、bench_startup 和打包、中低级问题的修复、save_png 压缩级别、Pillow 大版本升级。
+- 未在 Windows 上验证：H1、H2、P1–P3 全部。下一步见 00-SUMMARY.md。
