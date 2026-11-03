@@ -76,7 +76,7 @@
 |---|---|---|---|---|---|---|
 | 1 | P1 copy_to_clipboard | 约 8–10 ms + 一帧内存 | 约 -60% | 逐字节相同 | 低 | ✅ `claude/perf-clipboard-dib` |
 | 2 | P2 make_icon 缓存 | 约 1.5 ms | 约 -99% | 逐字节相同 | 很低 | ✅ `claude/perf-tray-icon-cache` |
-| 3 | P3 render_card 字体缓存 | 约 2.5 ms | 约 -35% | 像素相同 | 低 | ✅ `claude/perf-toast-font-cache` |
+| 3 | P3 render_card 字体缓存 | 约 2.5 ms | 约 -35% | 像素相同 | 低 | ✅ 实际做成 `claude/perf-toast-card-cache`（见下） |
 | — | P4 save_png 压缩级别 | 约 100 ms | 约 -50% | 文件变化 | 需用户决定 | ❌ |
 
 ## 只能在 Windows 上测的部分（留给用户）
@@ -86,3 +86,14 @@
 - `refresh_tray` 里 pystray 每次改图标都写一个临时 ICO 再 `LoadImage`。02-findings M6 / L14 建议「状态没变就不设图标」，
   这能省掉这部分开销，但会改变 refresh_tray 的行为，这里不做。
 - 启动耗时：`tests\bench_startup.py`。
+
+## 阶段 6 结果
+
+| 项 | PR（→ claude/review-fixes） | 采用的方案 | 基准中位数（前 → 后） | 内存 |
+|---|---|---|---|---|
+| P1 | https://github.com/OranngeAustin/game_snap/pull/2 | 图已是 RGB 就不 convert | 13.65 / 12.45 → 5.09 / 7.40 ms（-40%～-60%） | 4K 单次峰值 RSS -8 MB |
+| P2 | https://github.com/OranngeAustin/game_snap/pull/3 | `lru_cache` 按状态缓存，返回拷贝 | 1.481 / 2.323 → 0.003 / 0.004 ms（-99.8%） | 常驻 +48 KB |
+| P3 | https://github.com/OranngeAustin/game_snap/pull/4 | 缓存画好的卡片（`lru_cache(maxsize=4)`），返回拷贝 | 同一句提示 9.06 / 7.07 / 8.24 → 0.004–0.005 ms（-99.9%）；全不命中时不变 | 实际场景无可测差别；最坏 +3 MB（glibc 堆碎片） |
+
+P3 原计划给 `_font` 加缓存：耗时 -34%，但每个字号常驻约 +3.5 MB（4 个字号 +14 MB），不划算，所以改成缓存卡片。
+P1 试过 `getbuffer()[14:].tobytes()`，没有收益（CPython 3.12 的 `getvalue()` 本来就不复制），所以没采用。

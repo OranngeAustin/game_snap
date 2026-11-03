@@ -13,8 +13,8 @@
 | 3 | 安全审计 → 02-findings.md「安全」 | ✅ | 无注入、无不安全反序列化、无硬编码密钥；M9 Pillow 下限允许有已知漏洞的版本（可利用性低）；L19–L21 加固项 |
 | 4 | 修复高危问题，PR → main | ✅ | H2 93f99bf、H1 d7b4f29；PR https://github.com/OranngeAustin/game_snap/pull/1 （未合并）；Linux 上失败数未增加，需回 Windows 验证 |
 | 5 | 性能分析 → 03-perf-plan.md | ✅ | 新增 tests/bench_logic.py；每张截图 Python 侧约 247 ms，save_png 占 89% 但只能改输出提速（不选）；选 P1 剪贴板 DIB、P2 托盘图标缓存、P3 提示字体缓存 |
-| 6 | 算法优化（前 3 项），PR → claude/review-fixes | 🔄 | |
-| 7 | 总结 → 00-SUMMARY.md | ⬜ | |
+| 6 | 算法优化（前 3 项），PR → claude/review-fixes | ✅ | P1 剪贴板 -40%～-60%（#2）、P2 托盘图标 -99.8%（#3）、P3 提示卡片重复时 -99.9%（#4）；都先补特征测试，输出逐字节不变 |
+| 7 | 总结 → 00-SUMMARY.md | 🔄 | |
 
 ## 阶段 0：基线
 
@@ -78,3 +78,11 @@ gamesnap-build 跑 quick / all」。
 |---|---|---|---|---|---|---|
 | P1 copy_to_clipboard | `claude/perf-clipboard-dib` / https://github.com/OranngeAustin/game_snap/pull/2 | test_clipboard.py（2203cab） | 13.65 / 12.45 ms | 5.09 / 7.40 ms | 约 -40%～-60%；4K 峰值 RSS -8 MB | ✅ 保留（方案 1；方案 2 getbuffer 无收益已弃） |
 | P2 make_icon | `claude/perf-tray-icon-cache` / https://github.com/OranngeAustin/game_snap/pull/3 | test_tray_icon.py（7dc1714） | 1.481 / 2.323 ms | 0.003 / 0.004 ms | 约 -99.8%；常驻 +48 KB | ✅ 保留（方案 1：lru_cache + 返回拷贝） |
+| P3 render_card | `claude/perf-toast-card-cache` / https://github.com/OranngeAustin/game_snap/pull/4 | test_toast_card.py（c951337） | 9.056 / 7.074 / 8.242 ms | 0.004 / 0.004 / 0.005 ms | 重复提示约 -99.9%；未命中不变；实际场景内存无可测差别 | ✅ 保留方案 2（缓存画好的卡片）；方案 1（缓存字体）-34% 但每字号常驻 +3.5 MB，弃用 |
+
+- **D9 P3 换方案**：计划里的方案（给 `_font` 加缓存）达到了 20% 的目标（-34%），但内存代价不可接受（项目 README
+  专门列了资源占用，游戏中总共约 20–29 MB）。按 RUNBOOK「最多尝试 3 种方案、保留最好的正确版本」，试了方案 2
+  （缓存画好的卡片，maxsize 先 8 后 4），实际场景 -99.9% 且内存无可测差别，保留方案 2，分支随之改名为
+  `claude/perf-toast-card-cache`（改名时还没推送）。
+- **D10 优化 PR 的基准测法**：容器里同一项各轮可差 30%，所以每项都在同一时段测优化前后；P3 交替 A/B 各 3 次。
+  PR 描述里都只给相对提升。
