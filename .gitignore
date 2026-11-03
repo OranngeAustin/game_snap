@@ -1,5 +1,5 @@
-# 「添加游戏」黑名单，含本机软件清单，不上传
-not_games.py
+# not_games.py：仓库里是精简版，本机的完整黑名单用 skip-worktree 挡住，不会被提交
+# （git update-index --skip-worktree not_games.py）
 
 # 生成物和本地备份
 __pycache__/
