@@ -14,6 +14,7 @@ import argparse
 import ctypes
 import ctypes.wintypes as wt
 import faulthandler
+import functools
 import logging
 import os
 import queue
@@ -484,7 +485,13 @@ class App:
 
 
 def make_icon(state: str) -> Image.Image:
-    """托盘图标：圆角方块 + 相机。灰=等待游戏，绿=工作中，橙=暂停。"""
+    """托盘图标：圆角方块 + 相机。灰=等待游戏，绿=工作中，橙=暂停。
+    每种状态只画一次（每张截图、每次状态变化都要刷新托盘），每次返回一份拷贝，调用方改了也不影响缓存。"""
+    return _draw_icon(state).copy()
+
+
+@functools.lru_cache(maxsize=None)
+def _draw_icon(state: str) -> Image.Image:
     bg = {"idle": (142, 142, 147), "active": (52, 199, 89), "paused": (255, 159, 10)}[state]
     s = 256
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
