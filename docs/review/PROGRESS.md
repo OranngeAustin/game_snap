@@ -77,3 +77,4 @@ gamesnap-build 跑 quick / all」。
 | 项 | 分支 / PR | 特征测试 | 基线中位数 | 优化后中位数 | 提升 | 结论 |
 |---|---|---|---|---|---|---|
 | P1 copy_to_clipboard | `claude/perf-clipboard-dib` / https://github.com/OranngeAustin/game_snap/pull/2 | test_clipboard.py（2203cab） | 13.65 / 12.45 ms | 5.09 / 7.40 ms | 约 -40%～-60%；4K 峰值 RSS -8 MB | ✅ 保留（方案 1；方案 2 getbuffer 无收益已弃） |
+| P2 make_icon | `claude/perf-tray-icon-cache` / https://github.com/OranngeAustin/game_snap/pull/3 | test_tray_icon.py（7dc1714） | 1.481 / 2.323 ms | 0.003 / 0.004 ms | 约 -99.8%；常驻 +48 KB | ✅ 保留（方案 1：lru_cache + 返回拷贝） |
