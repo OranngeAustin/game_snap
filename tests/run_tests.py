@@ -28,6 +28,7 @@ QUICK = {
     "blocklist_remove": ["test_blocklist_remove.py", "{run}"],
     "yuzu_naming": ["test_yuzu_naming.py", "{run}"],
     "dualsense": ["test_dualsense.py"],
+    "listener_restart": ["test_listener_restart.py", "{run}"],
 }
 SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wt
+import itertools
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
@@ -47,6 +48,7 @@ kernel32.GetModuleHandleW.argtypes = [wt.LPCWSTR]
 
 user32.RegisterClassExW.restype = wt.ATOM
 user32.RegisterClassExW.argtypes = [ctypes.POINTER(WNDCLASSEXW)]
+user32.UnregisterClassW.argtypes = [wt.LPCWSTR, wt.HINSTANCE]
 user32.CreateWindowExW.restype = wt.HWND
 user32.CreateWindowExW.argtypes = [
     wt.DWORD, wt.LPCWSTR, wt.LPCWSTR, wt.DWORD,
@@ -64,20 +66,41 @@ user32.DispatchMessageW.restype = LRESULT
 user32.DispatchMessageW.argtypes = [ctypes.POINTER(wt.MSG)]
 
 
+_class_ids = itertools.count(1)
+
+
+def unique_class_name(prefix: str) -> str:
+    """每个窗口用自己的窗口类：prefix 加上本进程内递增的序号。
+    同名的类在一个进程里只能注册一次，之后 CreateWindowExW 用的一直是第一次注册时的窗口过程。
+    InputListener 停了还会再建，类名固定的话，新窗口的消息会送进第一个 InputListener 的回调：
+    它的状态早就过时了，它被回收之后那个回调更是已释放的内存（docs/review/02-findings.md H1）。"""
+    return f"{prefix}_{next(_class_ids)}"
+
+
 def create_window(class_name: str, wndproc, ex_style: int, style: int = WS_POPUP) -> int:
-    """注册窗口类并创建一个（不显示的）窗口，返回 hwnd。wndproc 需由调用方保持引用。"""
+    """注册窗口类并创建一个（不显示的）窗口，返回 hwnd。
+    class_name 每次都要不同（用 unique_class_name），窗口销毁后调用 unregister_class；
+    wndproc 需由调用方保持引用。"""
     hinst = kernel32.GetModuleHandleW(None)
     wc = WNDCLASSEXW()
     wc.cbSize = ctypes.sizeof(WNDCLASSEXW)
     wc.lpfnWndProc = wndproc
     wc.hInstance = hinst
     wc.lpszClassName = class_name
-    user32.RegisterClassExW(ctypes.byref(wc))  # 重复注册会失败，无妨
+    if not user32.RegisterClassExW(ctypes.byref(wc)):
+        raise ctypes.WinError(ctypes.get_last_error())
     hwnd = user32.CreateWindowExW(ex_style, class_name, class_name, style,
                                   0, 0, 0, 0, None, None, hinst, None)
     if not hwnd:
-        raise ctypes.WinError(ctypes.get_last_error())
+        err = ctypes.get_last_error()
+        user32.UnregisterClassW(class_name, hinst)
+        raise ctypes.WinError(err)
     return hwnd
+
+
+def unregister_class(class_name: str) -> None:
+    """窗口销毁后注销它的窗口类，不在进程里留下挂着旧回调的类。"""
+    user32.UnregisterClassW(class_name, kernel32.GetModuleHandleW(None))
 
 
 def message_loop() -> None:

@@ -19,7 +19,7 @@ from capture import qpc_now
 from watcher import foreground
 from winapi import (
     LRESULT, WM_APP, WM_CLOSE, WM_DESTROY, WM_INPUT, WNDPROC, WS_EX_TOOLWINDOW,
-    create_window, kernel32, message_loop, user32,
+    create_window, kernel32, message_loop, unique_class_name, unregister_class, user32,
 )
 
 log = logging.getLogger(__name__)
@@ -128,6 +128,7 @@ class InputListener(threading.Thread):
         self._swallow_up_vk = None    # 学习模式吞掉的键，其抬起也吞掉
         self._raw_registered = False
         self._hwnd = 0
+        self._class_name = unique_class_name("GameSnapInput")   # 每个监听一个窗口类，见 winapi.unique_class_name
         self._ready = threading.Event()
         # ctypes 回调必须保持引用，否则会被回收导致崩溃
         self._wndproc = WNDPROC(self._proc)
@@ -162,7 +163,7 @@ class InputListener(threading.Thread):
     def run(self) -> None:
         kb_hook = we_hook = None
         try:
-            self._hwnd = create_window("GameSnapInput", self._wndproc, WS_EX_TOOLWINDOW)
+            self._hwnd = create_window(self._class_name, self._wndproc, WS_EX_TOOLWINDOW)
             kb_hook = user32.SetWindowsHookExW(WH_KEYBOARD_LL, self._kb_proc_c,
                                                kernel32.GetModuleHandleW(None), 0)
             if not kb_hook:
@@ -180,6 +181,7 @@ class InputListener(threading.Thread):
         user32.UnhookWindowsHookEx(kb_hook)
         if we_hook:
             user32.UnhookWinEvent(we_hook)
+        unregister_class(self._class_name)   # 窗口在 WM_CLOSE 里已销毁
         log.info("按键监听已停止")
 
     def _proc(self, hwnd, msg, wparam, lparam):

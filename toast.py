@@ -17,7 +17,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont
 from winapi import (
     WM_APP, WM_CLOSE, WM_DESTROY, WM_TIMER, WNDPROC,
     WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
-    create_window, gdi32, message_loop, user32,
+    create_window, gdi32, message_loop, unique_class_name, unregister_class, user32,
 )
 
 log = logging.getLogger(__name__)
@@ -143,6 +143,7 @@ class Toast(threading.Thread):
         self._lock = threading.Lock()
         self._pending: tuple[str, bool, tuple[int, int, int, int], int] | None = None
         self._hwnd = 0
+        self._class_name = unique_class_name("GameSnapToast")
         self._wndproc = WNDPROC(self._proc)
         self._memdc = None
         self._bitmap = None
@@ -168,7 +169,7 @@ class Toast(threading.Thread):
         try:
             ex = (WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
                   | WS_EX_TOPMOST | WS_EX_TOOLWINDOW)
-            self._hwnd = create_window("GameSnapToast", self._wndproc, ex)
+            self._hwnd = create_window(self._class_name, self._wndproc, ex)
             if not user32.SetWindowDisplayAffinity(self._hwnd, WDA_EXCLUDEFROMCAPTURE):
                 log.warning("SetWindowDisplayAffinity 失败，提示浮层可能会被截进图里")
         except Exception:
@@ -178,6 +179,7 @@ class Toast(threading.Thread):
         self._ready.set()
         message_loop()
         self._free_bitmap()
+        unregister_class(self._class_name)
 
     def _proc(self, hwnd, msg, wparam, lparam):
         try:
