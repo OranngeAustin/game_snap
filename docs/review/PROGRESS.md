@@ -10,8 +10,8 @@
 | 0 | 准备：依赖、基线测试、分支、本文件 | ✅ | Linux 基线：quick 1 过 4 失败（环境），all 跑不起来；分支已推送 |
 | 1 | 架构摸底 → 01-architecture.md | ✅ | 13 个模块、8 类线程；审查顺序 hotkey/winapi → d3d/capture → main → config → watcher → toast → output → instance/dualsense → build/not_games → tests |
 | 2 | 代码审查 → 02-findings.md | ✅ | 3 个 code-reviewer 子代理分组审查 + 逐条核实：高 2、中 8、低 18、待确认 9；H2 已在 Linux 复现 |
-| 3 | 安全审计 → 02-findings.md「安全」 | 🔄 | |
-| 4 | 修复高危问题，PR → main | ⬜ | |
+| 3 | 安全审计 → 02-findings.md「安全」 | ✅ | 无注入、无不安全反序列化、无硬编码密钥；M9 Pillow 下限允许有已知漏洞的版本（可利用性低）；L19–L21 加固项 |
+| 4 | 修复高危问题，PR → main | 🔄 | |
 | 5 | 性能分析 → 03-perf-plan.md | ⬜ | |
 | 6 | 算法优化（前 3 项），PR → claude/review-fixes | ⬜ | |
 | 7 | 总结 → 00-SUMMARY.md | ⬜ | |

@@ -7,7 +7,7 @@
 把握程度：**高** = 读代码可以确定，或已复现；**中** = 机制确定、实际后果取决于运行时（GC、驱动、WinRT 实现）；
 **低** = 推测，放进「待人工确认」。
 
-**合计**：高 2（H1–H2）、中 8（M1–M8）、低 18（L1–L18）、待人工确认 9（Q1–Q9）；安全审计见文末「安全」一节。
+**合计**：高 2（H1–H2）、中 9（M1–M8，安全 M9）、低 21（L1–L18，安全 L19–L21）、待人工确认 9（Q1–Q9）；安全审计见文末「安全」一节。
 阶段 4 只修「高」：H1、H2。
 
 ## 高
@@ -168,3 +168,40 @@
 - `wait_frame` 的超时判断正确，0.5ms 轮询有上限。
 - dualsense.py：通知没触发前不重复登记；`MAX_TRIES` / `_reported` 计数、拔插后重置、svcl 超时处理正确。
 - `on_poll`：启动器开着一直等、学键和添加期间不退出、宽限从最后一次看到游戏起算，都和 CLAUDE.md 的约定一致。
+
+## 安全
+
+范围：全仓库（13 个模块 + tests/ + build.py），检查注入（SQL / 命令 / 模板）、鉴权与越权、敏感信息硬编码或写入日志、
+不安全的反序列化、依赖中已知的高危版本。编号接续上面各级。
+
+### 检查过程与结论
+
+| 类别 | 怎么查的 | 结论 |
+|---|---|---|
+| SQL / 模板注入 | 全仓库没有数据库、没有模板引擎 | 不适用 |
+| 命令注入 | 列出所有 `subprocess.*`、`ShellExecuteW`、`os.startfile`、`os.system`、`shell=True` 调用点 | 没有。`subprocess` 都是参数列表、无 `shell=True`（`dualsense.py:145` 的 svcl 参数来自 HKLM 下的端点 GUID，写 HKLM 本身需要管理员；`build.py:72` 是开发工具）。`ShellExecuteW`（`main.py:514`、`556`）的参数来自本人的命令行 / 快捷方式；`relaunch_as_admin` 用 `list2cmdline` 正确转义。`os.startfile(save_dir)`（`main.py:449`）之前的 `mkdir(exist_ok=True)` 遇到已存在的文件会抛 FileExistsError，借不了它执行现成的 exe |
+| 路径穿越 | 追踪写文件的路径来源 | 截图文件夹名来自窗口标题，`..` 会写到 GameShots 上一级，见 M2（只写 PNG，影响很小） |
+| 鉴权与越权 | 本地工具，没有网络接口；看以管理员身份运行时会碰哪些普通用户可写的东西 | 见 L19、L20 |
+| 敏感信息 | `grep` 源码和全部 git 历史：password / secret / token / api_key / 私钥头 / `ghp_` / `sk-` | 没有密钥、令牌。日志只有进程名、窗口标题、截图路径，都在本机。仓库是公开的，CLAUDE.md 里有 Windows 用户名和个人文件夹名，见 L21 |
+| 不安全的反序列化 | `grep` pickle / marshal / yaml / eval / exec | 只有 `json.loads`（`config.py`），没有不安全的反序列化 |
+| 依赖已知漏洞 | 用 OSV（api.osv.dev）按 requirements.txt 的下限版本逐个查；再查 Pillow 各大版本 | 见 M9；mss 10.0、pystray 0.19.0、pywin32 306、pyinstaller 6.0.0、winrt-runtime 3.2.0 在 OSV 里没有记录 |
+
+### M9 requirements.txt 允许装上有已知高危 / 严重漏洞的 Pillow
+- **位置**：`requirements.txt:10`（`pillow>=10.1`）
+- **问题**：下限 10.1.0 在 OSV 里有 51 条 GHSA（含 CRITICAL：CVE-2023-50447 `ImageMath.eval` 任意代码执行，10.2.0 修复；HIGH：
+  CVE-2024-28219 缓冲区溢出，10.3.0 修复）；12.1 / 12.2 分别还有 97 / 85 条（多数在 12.3.0、13.0.0 修复）。截至 2026-11-03，
+  只有当前最新的 13.0.0 没有已知漏洞。用户 gamesnap-build 环境里实际装的版本未知。
+- **实际可利用性：低**。GameSnap 不打开任何外来图片：只编码自己抓的帧（PNG / BMP）、画托盘图标和提示卡片、用系统字体渲染文字；
+  绝大多数漏洞在 TIFF / GIF / PDF / JPEG 等解码器、`ImageMath`、`ImageCms` 里，用不到。字体相关的两条（12.2.0 的字体整数溢出、
+  13.0.0 的描边渲染 invalid free）需要恶意字体或描边，GameSnap 也不满足。
+- **修复建议**：回 Windows 用 `gamesnap-build\python.exe -m pip show pillow` 看实际版本；升到 13.x 是大版本升级（RUNBOOK 禁止
+  这里做），需要在 Windows 上跑 `all` 并重新打包验证后再改下限。放进「待人工确认」。
+- **把握**：高（版本事实）；可利用性低。
+
+### 低
+
+| 编号 | 位置 | 问题 | 修复建议 | 把握 |
+|---|---|---|---|---|
+| L19 | `instance.py:26` | 命名对象的安全描述符给 Everyone 完全控制（GA）、低完整性标签：同一会话里任何进程（包括低完整性的沙箱进程）都能 SetEvent 让 GameSnap 退出，或抢先占用 `SingleInstance` / `Elevated` 名字让它起不来、无法被管理员实例接管。只是拒绝服务，不能提权 | 标签改成中完整性（ME）就足够让普通和管理员实例互通；访问权限只给 SYNCHRONIZE / EVENT_MODIFY_STATE 等需要的几项 | 中 |
+| L20 | `main.py:573-576`、`dualsense.py:40`、`145`、`config.py:13` | 以管理员身份运行的 GameSnap 用的文件都在普通用户可写的位置：`dist\GameSnap\` 里的 exe / DLL / .pyd、`tools\svcl\svcl.exe`（DualSense 不对时以管理员身份执行）、`%APPDATA%\GameSnap\config.json`（`save_dir` 决定管理员进程在哪儿建目录、写 PNG）。已在本用户权限下运行的恶意程序替换其中任何一个，下次双击「米哈游启动器 + 截图」点 UAC「是」时就以管理员身份执行。微软不把 UAC 当安全边界，属加固项 | 要加固就把 dist 装到 `Program Files`（普通用户不可写），svcl 随之移动；单独加固 config 意义不大 | 高（事实）/ 加固项 |
+| L21 | `CLAUDE.md:14`、`26` | 公开仓库里有 Windows 用户名和个人文件夹布局（`C:\Users\<用户名>\…`、`D:\00…Documents\图片`），属轻微信息暴露 | 若不希望公开，改成占位符（如 `%USERPROFILE%`）；是否在意由用户决定 | 高 |
