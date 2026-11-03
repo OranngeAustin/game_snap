@@ -23,6 +23,7 @@ PROJECT = HERE.parent
 # name -> script and arguments; {run} is the test's own folder, which the test creates
 QUICK = {
     "not_games": ["test_not_games.py"],
+    "config": ["test_config.py", "{run}"],
     "add_game": ["test_add_game.py", "{run}"],
     "blocklist_remove": ["test_blocklist_remove.py", "{run}"],
     "yuzu_naming": ["test_yuzu_naming.py", "{run}"],

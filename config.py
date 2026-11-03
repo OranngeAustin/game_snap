@@ -5,7 +5,9 @@ import copy
 import json
 import logging
 import os
+import shutil
 import threading
+from datetime import datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -53,12 +55,26 @@ class Config:
         self.data = copy.deepcopy(DEFAULTS)
         if path.exists():
             try:
-                loaded = json.loads(path.read_text(encoding="utf-8"))
+                # utf-8-sig：带 BOM 的也能读（PowerShell 5.1 的 Set-Content -Encoding UTF8、记事本「UTF-8 带 BOM」）
+                loaded = json.loads(path.read_text(encoding="utf-8-sig"))
+                if not isinstance(loaded, dict):
+                    raise ValueError(f"顶层应该是 {{...}}，实际是 {type(loaded).__name__}")
                 self.data.update(loaded)
             except Exception:
                 log.exception("配置文件读取失败，使用默认配置：%s", path)
+                self._keep_unreadable()
         else:
             self.save()
+
+    def _keep_unreadable(self) -> None:
+        """读不出来的配置文件先另存一份：之后任何 set() 都会用默认配置覆盖它，
+        用户手改时多了个逗号，游戏名单、截图键就全没了（docs/review/02-findings.md H2）。"""
+        backup = self.path.with_name(f"{self.path.stem}.unreadable_{datetime.now():%Y%m%d_%H%M%S}{self.path.suffix}")
+        try:
+            shutil.copy2(self.path, backup)
+            log.warning("读不出来的配置文件另存为 %s，改好后改回 %s 即可", backup, self.path.name)
+        except OSError:
+            log.exception("另存读不出来的配置文件失败")
 
     def __getitem__(self, key: str):
         return self.data[key]
