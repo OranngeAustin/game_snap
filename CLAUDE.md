@@ -10,8 +10,16 @@ Python 解释器、文件变更三级制、编码、MSIX 重定向这些通用�
 - 本项目的依赖只装在 `D:\anaconda3\envs\gamesnap-build\python.exe`（Python 3.12，按 requirements.txt 装），跑源码、测试、打包都用它，用户已同意；不往 py312-clean 装本项目依赖。不 import 项目代码的独立小脚本仍用 py312-clean。
 - 从源码运行：`gamesnap-build\python.exe main.py --no-elevate --console`（不加 `--no-elevate` 会弹 UAC 重新以管理员身份启动）。
 - 打包：`gamesnap-build\python.exe build.py` → `dist\GameSnap\`（PyInstaller 文件夹版，约 93 个文件、40MB）。打包前先 `Get-Process GameSnap`，在运行就不打：文件被占用，而且所有快捷方式都指向 `dist\GameSnap\GameSnap.exe`，打包就是直接换掉用户在用的版本。
-- 不是 git 仓库。大改前把 dist 和源码备份到 `backup\vN_<说明>\`；改用户配置、快捷方式前备份到 `backup\before_<说明>\`；都在 README「旧版备份」里记一笔。
+- 源码在 git 里（GitHub：OranngeAustin/game_snap）；dist、build、backup、tools\svcl 不进 git（见 .gitignore）。not_games.py 本机是完整黑名单，用 `git update-index --skip-worktree` 挡住不提交，仓库里是精简版。大改前把 dist 和源码备份到 `backup\vN_<说明>\`；改用户配置、快捷方式前备份到 `backup\before_<说明>\`；都在 README「旧版备份」里记一笔。
 - 本机：笔记本，显示器由 AMD 核显驱动（另有 NVIDIA 独显，截图不用它）。「图片」文件夹是 `D:\00AustinDocuments\图片`，截图在 `GameShots\<游戏名>\` 下。
+
+## 云端会话（Linux 容器）
+
+在 claude.ai/code 的云端会话里是 Ubuntu，不是 Windows，大部分东西跑不了：
+
+- winrt-*、pywin32 只有 Windows 版，装不上；代码 import 时就要 `winsound`、`winreg`、`ctypes.WinDLL`（Windows 版 Python 才有）。所以 main.py、build.py，以及除 not_games 之外的测试都跑不了，这里只能读代码、改代码。
+- 能跑的只有 not_games：`PYSTRAY_BACKEND=dummy ~/.venvs/gamesnap/bin/python -X utf8 tests/run_tests.py not_games`（环境安装脚本建的 venv，Python 3.12 + mss、pillow、pystray；不设 dummy 时 `import pystray` 会去连 X 显示器而报错）。它本身不用第三方包，`python3 -X utf8 tests/test_not_games.py` 也行。仓库里的 not_games.py 是精简版，这里过了不代表本机那份也过。
+- 在这里改了代码，要说清楚只在 Linux 上跑了 not_games，其他得回 Windows 用 gamesnap-build 跑 quick / all。
 
 ## 用户的真实数据
 
