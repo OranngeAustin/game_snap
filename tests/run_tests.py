@@ -25,6 +25,7 @@ QUICK = {
     "not_games": ["test_not_games.py"],
     "config": ["test_config.py", "{run}"],
     "add_game": ["test_add_game.py", "{run}"],
+    "tray_icon": ["test_tray_icon.py", "{run}"],
     "blocklist_remove": ["test_blocklist_remove.py", "{run}"],
     "yuzu_naming": ["test_yuzu_naming.py", "{run}"],
     "dualsense": ["test_dualsense.py"],
