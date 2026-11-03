@@ -34,6 +34,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | 名字 | 文件 | 测什么 |
 |---|---|---|
 | not_games | test_not_games.py | 黑名单格式正确，没拦本机的游戏、模拟器和运行环境 |
+| toast_card | test_toast_card.py | 提示卡片在多组文字、成败、缩放下的像素逐字节不变（云端 Linux 也能跑） |
 | config | test_config.py | config.json 读写：没有文件时写默认配置、浅合并、读不出来时先另存一份再用默认配置（纯 Python，云端 Linux 也能跑） |
 | add_game | test_add_game.py | 「添加游戏…」：提示、拒收、加入、已在名单、超时、和「更换截图键…」互斥、按键和超时同时到；`--launch` 支持链接 |
 | blocklist_remove | test_blocklist_remove.py | 黑名单拦截和放行的样例；「游戏名单」移除：确认、取消、过期的菜单项、名字带 `&`、空名单、原生 Win32 菜单 |
