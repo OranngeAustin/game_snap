@@ -54,3 +54,5 @@ DualSense 插着但不是四声道时，dualsense 和 lifecycle_source 会失败
 - `list_not_games.py`：按分类打印黑名单，方便审查。
 - `list_software.py <输出路径（不带扩展名）>`：列出本机装的软件和游戏库，用来更新 not_games.py 的 THIS_PC。要在容器外跑；输出里有你的软件和快捷方式名，写到 `%TEMP%` 下，不放进项目。之后用 `test_not_games.py <software.txt>` 可以看名单里哪些名字在清单里找不到。
 - `bench_startup.py <run dir> [次数]`：测打包版的启动耗时，只测量，不判对错。
+- `bench_logic.py [轮数] [--only 名字,…]`：测截图之后那段纯 Python / PIL 链路（make_icon、render_card、copy_to_clipboard、save_png 等）的耗时，每项报各轮中位数，只测量。剪贴板换成假的，不碰真剪贴板。Windows 和云端 Linux 都能跑。
+- `winstubs.py`：不是测试。在非 Windows 上把 `ctypes.WinDLL`、`winsound`、`winreg` 换成桩，让项目模块能 import，好在云端 Linux 上测纯逻辑；在 Windows 上什么都不做。

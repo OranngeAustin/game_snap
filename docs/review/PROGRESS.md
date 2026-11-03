@@ -12,8 +12,8 @@
 | 2 | 代码审查 → 02-findings.md | ✅ | 3 个 code-reviewer 子代理分组审查 + 逐条核实：高 2、中 8、低 18、待确认 9；H2 已在 Linux 复现 |
 | 3 | 安全审计 → 02-findings.md「安全」 | ✅ | 无注入、无不安全反序列化、无硬编码密钥；M9 Pillow 下限允许有已知漏洞的版本（可利用性低）；L19–L21 加固项 |
 | 4 | 修复高危问题，PR → main | ✅ | H2 93f99bf、H1 d7b4f29；PR https://github.com/OranngeAustin/game_snap/pull/1 （未合并）；Linux 上失败数未增加，需回 Windows 验证 |
-| 5 | 性能分析 → 03-perf-plan.md | 🔄 | |
-| 6 | 算法优化（前 3 项），PR → claude/review-fixes | ⬜ | |
+| 5 | 性能分析 → 03-perf-plan.md | ✅ | 新增 tests/bench_logic.py；每张截图 Python 侧约 247 ms，save_png 占 89% 但只能改输出提速（不选）；选 P1 剪贴板 DIB、P2 托盘图标缓存、P3 提示字体缓存 |
+| 6 | 算法优化（前 3 项），PR → claude/review-fixes | 🔄 | |
 | 7 | 总结 → 00-SUMMARY.md | ⬜ | |
 
 ## 阶段 0：基线
@@ -67,3 +67,7 @@ gamesnap-build 跑 quick / all」。
   约 30 行），不引入新的全局状态；代价是每个监听多注册一个窗口类，窗口销毁后注销。
 - **D6 H2 的修法**：只做「另存 + utf-8-sig」，不做「禁止覆盖 + 弹窗」：后者改变交互，留给用户决定（02-findings H2）。
 - **D7 PR**：阶段 4 的 PR 就是 `claude/review-fixes → main`，审查文档和后续阶段的文档也在这个分支上，会一并出现在 PR 里。
+
+- **D8 性能测量环境**：Windows 专属的热点（抓帧、托盘、进程快照）云端测不了，阶段 5 只测纯 Python / PIL 部分；
+  render_card 用 wqy-zenhei.ttc 冒充 msyh.ttc，避免 Linux 上 Pillow 遍历字体目录把耗时放大。save_png 是最大热点，
+  但提速要改压缩级别（改变输出文件），按「风险低」原则不进阶段 6，写进总结的建议。
