@@ -71,3 +71,9 @@ gamesnap-build 跑 quick / all」。
 - **D8 性能测量环境**：Windows 专属的热点（抓帧、托盘、进程快照）云端测不了，阶段 5 只测纯 Python / PIL 部分；
   render_card 用 wqy-zenhei.ttc 冒充 msyh.ttc，避免 Linux 上 Pillow 遍历字体目录把耗时放大。save_png 是最大热点，
   但提速要改压缩级别（改变输出文件），按「风险低」原则不进阶段 6，写进总结的建议。
+
+## 阶段 6：优化记录
+
+| 项 | 分支 / PR | 特征测试 | 基线中位数 | 优化后中位数 | 提升 | 结论 |
+|---|---|---|---|---|---|---|
+| P1 copy_to_clipboard | `claude/perf-clipboard-dib` / https://github.com/OranngeAustin/game_snap/pull/2 | test_clipboard.py（2203cab） | 13.65 / 12.45 ms | 5.09 / 7.40 ms | 约 -40%～-60%；4K 峰值 RSS -8 MB | ✅ 保留（方案 1；方案 2 getbuffer 无收益已弃） |
