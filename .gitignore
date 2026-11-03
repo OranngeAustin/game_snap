@@ -1,0 +1,11 @@
+# 「添加游戏」黑名单，含本机软件清单，不上传
+not_games.py
+
+# 生成物和本地备份
+__pycache__/
+build/
+dist/
+backup/
+
+# 第三方二进制（NirSoft svcl），本地自备
+tools/svcl/
