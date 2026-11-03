@@ -8,8 +8,8 @@
 | 阶段 | 内容 | 状态 | 说明 |
 |---|---|---|---|
 | 0 | 准备：依赖、基线测试、分支、本文件 | ✅ | Linux 基线：quick 1 过 4 失败（环境），all 跑不起来；分支已推送 |
-| 1 | 架构摸底 → 01-architecture.md | 🔄 | |
-| 2 | 代码审查 → 02-findings.md | ⬜ | |
+| 1 | 架构摸底 → 01-architecture.md | ✅ | 13 个模块、8 类线程；审查顺序 hotkey/winapi → d3d/capture → main → config → watcher → toast → output → instance/dualsense → build/not_games → tests |
+| 2 | 代码审查 → 02-findings.md | 🔄 | |
 | 3 | 安全审计 → 02-findings.md「安全」 | ⬜ | |
 | 4 | 修复高危问题，PR → main | ⬜ | |
 | 5 | 性能分析 → 03-perf-plan.md | ⬜ | |
