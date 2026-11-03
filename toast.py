@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wt
+import functools
 import logging
 import threading
 
@@ -98,7 +99,15 @@ def _font(size: int) -> ImageFont.FreeTypeFont:
 
 
 def render_card(text: str, ok: bool, scale: float) -> Image.Image:
-    """画一张半透明圆角卡片：左边绿色✓/红色!圆标，右边文字。3 倍超采样抗锯齿。"""
+    """画一张半透明圆角卡片：左边绿色✓/红色!圆标，右边文字。3 倍超采样抗锯齿。
+    同样的参数只画一次（每张截图的提示都是同一句「已截图 · 游戏名」），每次返回一份拷贝。
+    缓存的是画好的小图（几十 KB）。不缓存字体对象：大号中文 TTC 每个字号要常驻约 3.5MB
+    （拿 16MB 的 wqy-zenhei.ttc 冒充 msyh.ttc 实测），见 docs/review/03-perf-plan.md P3。"""
+    return _render_card(text, ok, scale).copy()
+
+
+@functools.lru_cache(maxsize=4)
+def _render_card(text: str, ok: bool, scale: float) -> Image.Image:
     ss = 3
     k = scale * ss
     font = _font(round(15 * k))
