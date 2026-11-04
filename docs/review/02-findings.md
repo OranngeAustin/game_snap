@@ -8,7 +8,7 @@
 **低** = 推测，放进「待人工确认」。
 
 **合计**：高 2（H1–H2）、中 9（M1–M8，安全 M9）、低 21（L1–L18，安全 L19–L21）、待人工确认 9（Q1–Q9）；安全审计见文末「安全」一节。
-阶段 4 只修「高」：H1、H2。
+阶段 4 只修「高」：H1、H2。中危 M1–M8 在 2026-11-04 的 `claude/medium-fixes` 上修了，状态见「中」一节开头的表。
 
 ## 高
 
@@ -44,6 +44,23 @@
 - **把握**：高。两个审查来源独立得出同一结论。
 
 ## 中
+
+**处理状态**（2026-11-04，分支 `claude/medium-fixes`，按 M7 → M5 → M6 → M1 → M4 → M8 → M2 → M3 的顺序，每项一个 commit，先写测试再修）：
+
+| 编号 | 状态 | 新测试（quick） | 修复前 → 修复后 | 没照建议做 / 留给人工的部分 |
+|---|---|---|---|---|
+| M1 | ✅ 已修复 | capture_resize | 3 项失败 → 全过 | 真实 WinRT 关闭后是否报错要在 Windows 上改分辨率确认 |
+| M2 | ✅ 已修复 | safe_name | 18 项失败 → 全过 | 没照搬 `strip(" .")`（会改掉以前能用的名字） |
+| M3 | ✅ 已修复 | toast_gdi | 10 项失败 → 全过 | — |
+| M4 | ✅ 已修复 | listener_start_fail | 12 项失败 → 全过 | 不按轮询自动重试（一直失败时太吵） |
+| M5 | ✅ 已修复 | config_values | 93 项失败并抛异常 → 全过 | `_get_interval()` 没挪进 try（值在加载时已保证合法） |
+| M6 | ✅ 已修复 | tray_refresh | 3 项失败 → 全过 | Q1（菜单显示中被 DestroyMenu）不在锁的范围内 |
+| M7 | ✅ 已修复 | listener_sync | 6 项失败 → 全过 | `self.games` 的赋值没挪进锁（不需要，见 PROGRESS D15） |
+| M8 | ✅ 已修复 | instance_quit | 11 项失败 → 全过 | 真实的接管流程要在 Windows 上试一次 |
+| M9 | ⏭ 跳过 | — | — | 要升 Pillow 大版本：RUNBOOK 工作规则「不升级依赖的大版本」，而且要在 Windows 上重新打包验证 |
+
+全部修复都只在云端 Linux 上跑过测试（Windows 专属的 add_game、blocklist_remove、yuzu_naming、dualsense 和 all 的 5 个跑不了），
+合并前要回 Windows 用 gamesnap-build 跑 quick 和 all。
 
 ### M1 `frame.close()` 之后又读 `frame.content_size` 重建帧池
 - **位置**：`capture.py:163-165`
@@ -230,6 +247,8 @@
 - **修复建议**：回 Windows 用 `gamesnap-build\python.exe -m pip show pillow` 看实际版本；升到 13.x 是大版本升级（RUNBOOK 禁止
   这里做），需要在 Windows 上跑 `all` 并重新打包验证后再改下限。放进「待人工确认」。
 - **把握**：高（版本事实）；可利用性低。
+- **状态**：⏭ 跳过（2026-11-04 中危修复时）。修它就是把 Pillow 升到 13.x 并提高下限：RUNBOOK 工作规则禁止升级依赖的大版本，
+  而且打包版要在 Windows 上重新打包、跑 all 才能验证，云端做不了。仍在「待人工确认」。
 
 ### 低
 
