@@ -37,7 +37,7 @@ RIDEV_REMOVE = 0x00000001
 RIDEV_INPUTSINK = 0x00000100
 RI_MOUSE_BUTTON_4_DOWN = 0x0040
 RI_MOUSE_BUTTON_5_DOWN = 0x0100
-MAPVK_VK_TO_VSC, MAPVK_VK_TO_CHAR = 0, 2
+MAPVK_VK_TO_VSC, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC_EX = 0, 2, 4
 # 截图键按下后这么久没再收到它的按下事件，就不算「按住不放」：抬起事件可能丢了（L1）。
 # 系统的按键重复延迟最长 1 秒，之后约每 33ms 重复一次，所以真按住时不会隔这么久
 HELD_STALE_SEC = 1.5
@@ -107,8 +107,12 @@ def key_name(binding: dict) -> str:
     if ch and chr(ch).isprintable() and not chr(ch).isspace():
         return chr(ch)
     buf = ctypes.create_unicode_buffer(64)
-    scan = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)
-    if user32.GetKeyNameTextW(scan << 16, buf, 64):
+    # 带上扩展键标志：否则 Insert、Home、方向键这些会显示成小键盘的「Num 0」「Num 8」（02-findings L4）
+    scan = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC_EX)
+    lparam = (scan & 0xFF) << 16
+    if scan & 0xFF00 in (0xE000, 0xE100):
+        lparam |= 1 << 24
+    if user32.GetKeyNameTextW(lparam, buf, 64):
         return buf.value
     return f"VK {vk:#04x}"
 
