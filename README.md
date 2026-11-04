@@ -41,7 +41,7 @@ dist\GameSnap\GameSnap.exe --launch "D:\miHoYo Launcher\launcher.exe"
 
 截图保存在 `图片\GameShots\<游戏名>\`，例如 `GameShots\原神\原神_2026-10-11_21-30-05.png`。
 
-yuzu 里的截图按正在玩的 Switch 游戏分文件夹。游戏名取自 yuzu 的窗口标题，和 yuzu 里显示的一样，例如 `GameShots\塞尔达传说 王国之泪\`；停在游戏列表时存到 `GameShots\yuzu\`。文件名里不能用的字符（如 `:`）会换成 `_`。
+yuzu 里的截图按正在玩的 Switch 游戏分文件夹。游戏名取自 yuzu 的窗口标题，和 yuzu 里显示的一样，例如 `GameShots\塞尔达传说 王国之泪\`；停在游戏列表时存到 `GameShots\yuzu\`。文件名里不能用的字符（如 `:`、控制字符）会换成 `_`；游戏名超过 80 个字符时截断；`CON`、`NUL` 这类 Windows 保留名前面加 `_`；只有点（如 `..`）的名字存到 `GameShots\未知游戏\`。
 
 ## 托盘菜单
 

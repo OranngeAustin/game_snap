@@ -44,6 +44,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | yuzu_naming | test_yuzu_naming.py | yuzu 截图按窗口标题里的游戏名分文件夹；跨进程读标题；文件名里的非法字符 |
 | clipboard | test_clipboard.py | 复制到剪贴板的数据（CF_DIB）逐字节不变、不改原图、剪贴板被占用时的重试；剪贴板换成假的，不碰真剪贴板（云端 Linux 也能跑） |
 | capture_resize | test_capture_resize.py | 游戏改分辨率后截图会话按新尺寸重建帧池：用假的 WinRT 帧（关闭后读尺寸就报错）走一遍，不抛异常、只重建一次、旧帧都关掉。不碰 WGC / D3D（纯 Python，云端 Linux 也能跑） |
+| safe_name | test_safe_name.py | 游戏名变成文件夹名 / 文件名：以前能用的名字不变；只有点（`..` 不会写到根目录外面）、控制字符、Windows 保留名、超过 80 个字符的名字照规则处理（纯 Python，云端 Linux 也能跑） |
 | dualsense | test_dualsense.py | DualSense 四声道守护的判断逻辑；只读真实注册表；守护线程（有绊线，不会真改） |
 | listener_restart | test_listener_restart.py | 按键监听停了再建（游戏关了又开、添加游戏 / 更换截图键前后）：新监听窗口的消息送到它自己，而不是第一个、已停掉的监听；会真的挂一会儿键盘钩子（F24、不拦任何键）。非 Windows 上打印 SKIP |
 | listener_sync | test_listener_sync.py | 按键监听该挂还是该摘：游戏退出的同时点「更换截图键…」「添加游戏…」，或者学键 / 添加结束的同时检测到游戏，监听都不能被错摘（学键要能超时结束、之后能自动退出）。把线程交错固定下来重放，不靠运气；不挂钩子（纯 Python，云端 Linux 也能跑） |

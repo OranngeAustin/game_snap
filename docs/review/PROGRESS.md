@@ -111,7 +111,7 @@ gamesnap-build 跑 quick / all」。
 | M1 | ✅ | 新增 capture_resize：修复前 3 项失败，修复后全过 | 两行改动，无取舍 |
 | M4 | ✅ | 新增 listener_start_fail：修复前 12 项失败，修复后全过 | 见 D18 |
 | M8 | ✅ | 新增 instance_quit：修复前 11 项失败，修复后全过 | 见 D19 |
-| M2 | ⏳ | | |
+| M2 | ✅ | 新增 safe_name：修复前 18 项失败，修复后全过 | 见 D20 |
 | M3 | ⏳ | | |
 
 - **D12 合并 #2–#4**：RUNBOOK 工作规则禁止合并 PR，但用户这次明确要求把 #2–#4 合进 `claude/review-fixes`，以用户的话为准，
@@ -145,4 +145,6 @@ gamesnap-build 跑 quick / all」。
   可能打开被换下实例还没释放的那个事件，上面还留着发给它的信号，不清掉的话本实例一开始等就会关掉自己，所以 `ResetEvent`。
   `App.on_tray_ready` 是新加的可选回调，已有测试建 App 时不设它，行为不变；add_live / remove_live 的 inner 脚本是包一层再调真的
   `_on_tray_ready`，回调照样会被调用。
+- **D20 M2 没照搬 `strip(" .")`**：截图文件夹名变了，用户就会觉得同一个游戏的截图「分到了两个文件夹」。所以原则是以前能用的名字不改，
+  只改以前会出错的；唯一的例外是截断（81–96 个字符的名字在截图根目录很短时以前也能存），取 02-findings 建议的 80。
 

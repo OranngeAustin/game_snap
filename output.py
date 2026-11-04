@@ -34,8 +34,24 @@ def shots_root(save_dir: str) -> Path:
     return Path(save_dir) if save_dir else pictures_dir() / "GameShots"
 
 
+# Windows 保留的设备名：不能用作文件夹名（不分大小写，带扩展名也不行）
+_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+MAX_NAME = 80   # 文件夹名、文件名里的游戏名最多这么多字符：截图根目录不超过约 60 个字符时，整条路径不超过 260
+
+
 def _safe_name(name: str) -> str:
-    return re.sub(r'[\\/:*?"<>|]', "_", name).strip() or "未知游戏"
+    """游戏名 → 文件夹名 / 文件名开头。游戏名来自 config.json 或 yuzu 的窗口标题（ROM 元数据），什么都可能有。
+    只处理以前会出错的情况（02-findings M2）：只有点和空格（".." 会写到截图根目录外面）、控制字符、Windows 保留名、
+    太长。80 个字符以内、以前就能用的名字一个字不改；超过 80 个字符的会截断（以前约 96 个字符以上就存不下）。"""
+    name = re.sub(r'[\\/:*?"<>|]', "_", name).strip()
+    name = re.sub(r"[\x00-\x1f]", "_", name)
+    if len(name) > MAX_NAME:
+        name = name[:MAX_NAME].rstrip(" .")
+    if not name.strip(" ."):
+        return "未知游戏"
+    if name.split(".")[0].rstrip(" ").upper() in _RESERVED:
+        name = "_" + name
+    return name
 
 
 def save_png(img: Image.Image, root: Path, game: str, when: datetime,
