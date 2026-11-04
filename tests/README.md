@@ -53,6 +53,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | instance_quit | test_instance_quit.py | 单实例的退出信号：拿到互斥体就建好、serve() 之前收到的信号不丢、接管时对方信号晚到会重试、接管后清掉残留信号；App 托盘就绪后才开始等信号，_quit 中途出错也让托盘退出。kernel32 换成假的，不建真的命名对象、不影响正在运行的 GameSnap（纯 Python，云端 Linux 也能跑） |
 | clipboard_error | test_clipboard_error.py | 写剪贴板时 EmptyClipboard / SetClipboardData 出错：copy_to_clipboard 返回 False 不抛异常、剪贴板照样关上；finish_shot 仍提示「已截图」、计数加一。假剪贴板（纯 Python，云端 Linux 也能跑） |
 | save_png_fail | test_save_png_fail.py | save_png 写到一半失败（磁盘满）：异常照常抛出、不留下 .png.part；之后照常保存（纯 Python，云端 Linux 也能跑） |
+| scan_fail | test_scan_fail.py | 进程检测失败（EnumProcesses 失败或返回 0 个、快照失败）：scan 抛异常而不是返回「没有游戏」，GameWatcher 跳过这一轮不回调。psapi 和快照是假的（纯 Python，云端 Linux 也能跑） |
 | lifecycle_source、lifecycle_exe | test_lifecycle.py | 源码版 / 打包版走一遍：启动 → 检测到游戏 → 关游戏 → 自动退出 |
 | add_live | test_add_live.py | 真程序里「添加游戏…」：等按键时不自动退出、超时、加入后马上生效、游戏关了再退出 |
 | remove_live | test_remove_live.py | 真程序里移除正在运行的游戏：不再跟踪它，按规则自动退出 |

@@ -42,6 +42,7 @@ QUICK = {
     "instance_quit": ["test_instance_quit.py", "{run}"],
     "clipboard_error": ["test_clipboard_error.py", "{run}"],
     "save_png_fail": ["test_save_png_fail.py", "{run}"],
+    "scan_fail": ["test_scan_fail.py"],
 }
 SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],
