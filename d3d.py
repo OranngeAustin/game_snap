@@ -125,8 +125,12 @@ def find_adapter(luid: tuple[int, int] | None) -> tuple[int | None, str]:
             if enum(i, ctypes.byref(adapter)) != 0:   # DXGI_ERROR_NOT_FOUND：枚举完了
                 return None, ""
             desc = DXGI_ADAPTER_DESC1()
-            _method(adapter.value, 10, ctypes.HRESULT, ctypes.POINTER(DXGI_ADAPTER_DESC1))(
-                ctypes.byref(desc))
+            try:
+                _method(adapter.value, 10, ctypes.HRESULT, ctypes.POINTER(DXGI_ADAPTER_DESC1))(
+                    ctypes.byref(desc))
+            except Exception:
+                release(adapter.value)   # 以前抛错时这块显卡不释放（02-findings L6）
+                raise
             if desc.AdapterLuid.key() == luid:
                 return adapter.value, desc.Description
             release(adapter.value)
@@ -148,9 +152,16 @@ class Device:
                                  ctypes.byref(dev), None, ctypes.byref(ctx))
         self.device, self.context = dev.value, ctx.value
         # WGC 的帧池会在它自己的线程里用这个设备，打开多线程保护
-        mt = query_interface(self.context, IID_ID3D11Multithread)
-        _method(mt, 5, wt.BOOL, wt.BOOL)(True)   # SetMultithreadProtected
-        release(mt)
+        try:
+            mt = query_interface(self.context, IID_ID3D11Multithread)
+            try:
+                _method(mt, 5, wt.BOOL, wt.BOOL)(True)   # SetMultithreadProtected
+            finally:
+                release(mt)
+        except Exception:
+            release(self.context)   # 以前抛错时刚建好的设备不释放（02-findings L6）
+            release(self.device)
+            raise
         self._staging = 0
         self._staging_size = (0, 0)
 
