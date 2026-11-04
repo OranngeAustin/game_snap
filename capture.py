@@ -129,22 +129,30 @@ class _GpuDevice:
             d3d.release(dxgi_device)
 
 
+# 建到一半失败的会话：已建的帧池 / 会话留着引用，不让 GC 回收（回收就等于关闭，见 Capturer；02-findings L9）
+_half_built: list = []
+
+
 class _Session:
     """一块显示器上的截图会话。帧池满了就不再收新帧，所以平时不耗资源。"""
 
     def __init__(self, wgc: _Wgc, gpu: _GpuDevice, hmon: int) -> None:
         self._wgc, self._gpu = wgc, gpu
-        self.item = wgc.create_for_monitor(hmon)
-        self.size = (self.item.size.width, self.item.size.height)
-        self.pool = wgc.FramePool.create_free_threaded(gpu.winrt, wgc.BGRA, POOL_SIZE, self.item.size)
-        self.session = self.pool.create_capture_session(self.item)
-        for attr in ("is_border_required", "is_cursor_capture_enabled"):
-            try:
-                setattr(self.session, attr, False)   # 不画黄色边框、不截鼠标
-            except Exception:
-                log.info("当前 Windows 不支持设置 %s", attr)
         self.held = None   # 手里留着的最新一帧（等新帧超时就用它）
-        self.session.start_capture()
+        try:
+            self.item = wgc.create_for_monitor(hmon)
+            self.size = (self.item.size.width, self.item.size.height)
+            self.pool = wgc.FramePool.create_free_threaded(gpu.winrt, wgc.BGRA, POOL_SIZE, self.item.size)
+            self.session = self.pool.create_capture_session(self.item)
+            for attr in ("is_border_required", "is_cursor_capture_enabled"):
+                try:
+                    setattr(self.session, attr, False)   # 不画黄色边框、不截鼠标
+                except Exception:
+                    log.info("当前 Windows 不支持设置 %s", attr)
+            self.session.start_capture()
+        except Exception:
+            _half_built.append(self)   # 已建的帧池 / 会话跟着 self 留下，不关
+            raise
 
     @staticmethod
     def ticks(frame) -> int:

@@ -52,6 +52,7 @@ QUICK = {
     "win_event_hook": ["test_win_event_hook.py"],
     "d3d_staging": ["test_d3d_staging.py"],
     "d3d_release": ["test_d3d_release.py"],
+    "session_init_fail": ["test_session_init_fail.py"],
 }
 SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],
