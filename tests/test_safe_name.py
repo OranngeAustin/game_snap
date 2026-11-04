@@ -4,8 +4,9 @@
 游戏名 ".." 会把截图写到 GameShots 的上一级，"." 写进 GameShots 根目录；CON、NUL、COM1 这类 Windows 保留名建不了文件夹；
 控制字符让保存直接报错；名字太长时路径超长，这个游戏每张都「截图失败」。检查：
 1. 以前就能用的名字一个字都不改（中文、普通英文、带非法字符的、首尾空格、以点开头的 .hack、80 个字符以内的）；
-2. 只由点和空格组成的名字用「未知游戏」，控制字符换成 _，保留名前面加 _，超过 80 个字符的截断（截断后不留尾部空格和点）；
-3. save_png 用 ".." 当游戏名时，截图仍在截图根目录里面。
+2. 只由点和空格组成的名字用「未知游戏」，控制字符换成 _，保留名前面加 _，超过 80 个字符的截断（截断后不留尾部空格和点），
+   结尾连续多个点和空格的去掉（Loading... 建文件夹时 Windows 去掉全部的点，存文件时只去掉一个，以前每张都存不下）；
+3. save_png 用 ".." 当游戏名时，截图仍在截图根目录里面；结尾有点的名字真的存得下。
 只在 <run dir> 里读写。纯 Python，Windows 和 Linux（tests/winstubs.py 桩）都能跑。Exit code 1 if anything failed.
 
 usage: python -X utf8 tests/test_safe_name.py <run dir>
@@ -47,6 +48,13 @@ SAME = [
     ("   ", "未知游戏"),
     ("\tName\t", "Name"),
     (".hack//G.U.", ".hack__G.U."),
+    ("Game.", "Game."),
+    ("Vol.", "Vol."),
+    ("a.b.", "a.b."),
+    ("St. Louis", "St. Louis"),
+    ("Game..v2", "Game..v2"),
+    ("...Game", "...Game"),
+    ("Game。。。", "Game。。。"),
     ("CONSOLE", "CONSOLE"),
     ("COM10", "COM10"),
     ("Con Game", "Con Game"),
@@ -71,6 +79,12 @@ FIXED = [
     ("LPT9", "_LPT9"),
     ("PRN.txt", "_PRN.txt"),
     ("AUX  ", "_AUX"),
+    ("Loading...", "Loading"),
+    ("Zelda...", "Zelda"),
+    ("Hello..", "Hello"),
+    ("Game. .", "Game"),
+    ("Game .", "Game"),
+    ("CON..", "_CON"),
 ]
 for name, want in FIXED:
     check(f"_safe_name({name!r})", output._safe_name(name), want)
@@ -96,6 +110,12 @@ print(f"      → {where}")
 path = output.save_png(img, root, "Z" * 200, when, {"Software": "GameSnap"})
 check("长名字：文件夹名 80 个字符", len(path.parent.name), 80)
 check("长名字：存下来了", path.exists(), True)
+for name in ("Loading...", "Zelda...", "Hello..", "Game. .", "Game .", "Game.", "Vol.", "a.b.", "Game..v2", "...Game"):
+    try:
+        ok = output.save_png(img, root, name, when, {"Software": "GameSnap"}).is_file()
+    except OSError as e:
+        ok = f"{type(e).__name__}: {e}"
+    check(f"游戏名 {name!r}：存下来了", ok, True)
 
 print("\n" + ("ALL PASSED" if not failures else f"{len(failures)} FAILED: {failures}"))
 sys.exit(1 if failures else 0)

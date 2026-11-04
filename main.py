@@ -185,6 +185,12 @@ class App:
         self.dualsense.start()
         if self.on_tray_ready is not None:
             self.on_tray_ready()
+        if self.cfg.read_only:
+            # 单独一个线程：对话框没人点时不拖住这个 setup 线程，icon.stop() 退出时要等它（等到 pystray 的超时才放行）
+            threading.Thread(target=message_box, name="ReadOnlyNotice", daemon=True, args=(
+                f"配置文件现在读不出来（可能被别的程序占着），也没能另存一份：\n{self.cfg.path}\n\n"
+                "这次用默认配置运行，游戏名单是默认的，设置也不会保存，原文件不会被改动。\n"
+                "请退出 GameSnap，等占着它的程序结束后再打开。",)).start()
 
     # ---------- 状态 ----------
     def should_capture(self, pid: int) -> bool:
@@ -574,25 +580,55 @@ def relaunch_as_admin() -> bool:
     return rc > 32
 
 
+class AppendingLogHandler(RotatingFileHandler):
+    """轮转失败时接着往原文件追加（docs/review/05-windows-verification.md P4）。另一个 GameSnap 开着日志时 Windows 不让改名，
+    RotatingFileHandler 这时已经先删了旧的 .1，这一条日志也丢了，之后每一条都这样，直到对方退出。"""
+
+    def doRollover(self) -> None:
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+        try:
+            os.replace(self.baseFilename, f"{self.baseFilename}.1")   # 改名成功才换掉旧的 .1
+        except OSError:
+            pass   # 这里写不了日志；下一条再试
+        self.stream = self._open()
+
+
 def setup_logging(console: bool) -> None:
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-    handlers: list[logging.Handler] = [
-        RotatingFileHandler(LOG_PATH, maxBytes=1_000_000, backupCount=1, encoding="utf-8")]
+    """日志打不开（被别的程序禁写）时这次不写文件：不能因为日志让程序起不来，--launch 和单实例检查都在后面（05 P3）。"""
+    handlers: list[logging.Handler] = []
+    error = None
+    try:
+        APP_DIR.mkdir(parents=True, exist_ok=True)
+        handlers.append(AppendingLogHandler(LOG_PATH, maxBytes=1_000_000, backupCount=1, encoding="utf-8"))
+    except OSError as e:
+        error = e
     if console:
         handlers.append(logging.StreamHandler())
-    logging.basicConfig(level=logging.INFO, handlers=handlers,
+    logging.basicConfig(level=logging.INFO, handlers=handlers or [logging.NullHandler()],
                         format="%(asctime)s %(levelname)s %(threadName)s %(name)s: %(message)s")
     logging.getLogger("comtypes").setLevel(logging.WARNING)
+    if error is not None:
+        log.warning("日志文件打不开，这次不写日志：%s（%s）", LOG_PATH, error)
 
 
 def enable_crash_log():
     """原生代码崩溃（访问违例等）时，把各线程的 Python 调用栈追加写进 crash.log。
-    注意：驱动里被自己处理掉的访问违例也会记一笔，看到记录要对照 gamesnap.log 里进程是否真的退出了。"""
-    if CRASH_LOG.exists() and CRASH_LOG.stat().st_size > 1_000_000:
-        CRASH_LOG.unlink()
-    f = open(CRASH_LOG, "a", encoding="utf-8")
-    f.write(f"== {datetime.now():%Y-%m-%d %H:%M:%S} GameSnap 启动 pid {os.getpid()}\n")
-    f.flush()
+    注意：驱动里被自己处理掉的访问违例也会记一笔，看到记录要对照 gamesnap.log 里进程是否真的退出了。
+    删不掉、打不开时不崩溃（第一个实例开着它时第二个实例删不掉，05 P3）：删不掉就接着写，打不开就这次不记，返回 None。"""
+    try:
+        if CRASH_LOG.exists() and CRASH_LOG.stat().st_size > 1_000_000:
+            CRASH_LOG.unlink()
+    except OSError as e:
+        log.warning("crash.log 太大但删不掉，接着往里写：%s", e)
+    try:
+        f = open(CRASH_LOG, "a", encoding="utf-8")
+        f.write(f"== {datetime.now():%Y-%m-%d %H:%M:%S} GameSnap 启动 pid {os.getpid()}\n")
+        f.flush()
+    except OSError as e:
+        log.warning("crash.log 打不开，这次不记录崩溃调用栈：%s", e)
+        return None
     faulthandler.enable(f, all_threads=True)
     return f
 

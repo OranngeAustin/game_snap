@@ -38,6 +38,15 @@ RIDEV_INPUTSINK = 0x00000100
 RI_MOUSE_BUTTON_4_DOWN = 0x0040
 RI_MOUSE_BUTTON_5_DOWN = 0x0100
 MAPVK_VK_TO_VSC, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC_EX = 0, 2, 4
+# PgUp PgDn End Home ← ↑ → ↓ Insert Delete：MAPVK_VK_TO_VSC_EX 不一定带 0xE0 前缀（本机键盘布局 0x8040804 的
+# Home 返回 0x47），不加扩展键标志就显示成小键盘的「Num 7」（docs/review/05-windows-verification.md P6）
+_EXTENDED_VKS = frozenset({0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E})
+# 这几个键 MAPVK_VK_TO_VSC_EX 的结果换算不出自己的名字，直接写 GetKeyNameTextW 要的（扫描码, 是否扩展键）
+_NAME_SCANS = {
+    0x13: (0x45, False),   # Pause：返回 0xE11D，低字节是 Right Ctrl 的扫描码
+    0x2C: (0x37, True),    # Print Screen：返回 0x54，是 Sys Req
+    0x90: (0x45, True),    # Num Lock：返回 0x45，不加标志是 Pause
+}
 # 截图键按下后这么久没再收到它的按下事件，就不算「按住不放」：抬起事件可能丢了（L1）。
 # 系统的按键重复延迟最长 1 秒，之后约每 33ms 重复一次，所以真按住时不会隔这么久
 HELD_STALE_SEC = 1.5
@@ -107,10 +116,14 @@ def key_name(binding: dict) -> str:
     if ch and chr(ch).isprintable() and not chr(ch).isspace():
         return chr(ch)
     buf = ctypes.create_unicode_buffer(64)
-    # 带上扩展键标志：否则 Insert、Home、方向键这些会显示成小键盘的「Num 0」「Num 8」（02-findings L4）
-    scan = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC_EX)
-    lparam = (scan & 0xFF) << 16
-    if scan & 0xFF00 in (0xE000, 0xE100):
+    if vk in _NAME_SCANS:
+        scan, extended = _NAME_SCANS[vk]
+    else:
+        vsc = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC_EX)
+        # 0xE0 前缀还要看：Left Windows、Right Ctrl 这些靠它区分（02-findings L4）
+        scan, extended = vsc & 0xFF, vk in _EXTENDED_VKS or vsc & 0xFF00 == 0xE000
+    lparam = scan << 16
+    if extended:
         lparam |= 1 << 24
     if user32.GetKeyNameTextW(lparam, buf, 64):
         return buf.value

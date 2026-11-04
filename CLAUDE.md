@@ -9,7 +9,7 @@ Python 解释器、文件变更三级制、编码、MSIX 重定向这些通用�
 
 - 本项目的依赖只装在 `D:\anaconda3\envs\gamesnap-build\python.exe`（Python 3.12，按 requirements.txt 装），跑源码、测试、打包都用它，用户已同意；不往 py312-clean 装本项目依赖。不 import 项目代码的独立小脚本仍用 py312-clean。
 - 从源码运行：`gamesnap-build\python.exe main.py --no-elevate --console`（不加 `--no-elevate` 会弹 UAC 重新以管理员身份启动）。
-- 打包：`gamesnap-build\python.exe build.py` → `dist\GameSnap\`（PyInstaller 文件夹版，约 93 个文件、40MB）。打包前先 `Get-Process GameSnap`，在运行就不打：文件被占用，而且所有快捷方式都指向 `dist\GameSnap\GameSnap.exe`，打包就是直接换掉用户在用的版本。
+- 打包：`gamesnap-build\python.exe build.py` → `dist\GameSnap\`（PyInstaller 文件夹版，约 92 个文件、40MB）。打包前先 `Get-Process GameSnap`，在运行就不打：文件被占用，而且所有快捷方式都指向 `dist\GameSnap\GameSnap.exe`，打包就是直接换掉用户在用的版本。
 - 源码在 git 里（GitHub：OranngeAustin/game_snap）；dist、build、backup、tools\svcl 不进 git（见 .gitignore）。not_games.py 本机是完整黑名单，用 `git update-index --skip-worktree` 挡住不提交，仓库里是精简版。大改前把 dist 和源码备份到 `backup\vN_<说明>\`；改用户配置、快捷方式前备份到 `backup\before_<说明>\`；都在 README「旧版备份」里记一笔。
 - 本机：笔记本，显示器由 AMD 核显驱动（另有 NVIDIA 独显，截图不用它）。「图片」文件夹是 `D:\00AustinDocuments\图片`，截图在 `GameShots\<游戏名>\` 下。
 
@@ -35,7 +35,7 @@ Python 解释器、文件变更三级制、编码、MSIX 重定向这些通用�
 | 文件 | 作用 |
 |---|---|
 | main.py | App：托盘菜单、状态、自动退出规则、更换截图键、添加 / 移除游戏；CaptureWorker（截图线程）；emulator_game（yuzu 按窗口标题分文件夹）；launch()；命令行参数；提权重启 |
-| config.py | Config：读写 config.json，`DEFAULTS`、`games_lower()` / `launchers_lower()`；`set()` 把整份配置写回文件；读完逐键校验，读不出来 / 有不合法值时先另存原文件；`update(key, change)` 在锁里读改写；`save()` 被占用时重试，仍失败只提示、不抛异常 |
+| config.py | Config：读写 config.json，`DEFAULTS`、`games_lower()` / `launchers_lower()`；`set()` 把整份配置写回文件；读完逐键校验，读不出来 / 有不合法值时先另存原文件；`update(key, change)` 在锁里读改写；读取和 `save()` 被占用时都重试，保存仍失败只提示、不抛异常；读不出来也另存不了时 `read_only`，这次运行不写回 |
 | watcher.py | GameWatcher 定时扫进程：ProcessScanner 平时只用 EnumProcesses 拿 pid 列表，出现新 pid 才做一次 Toolhelp 快照查进程名，不用 OpenProcess；process_name、window_title、foreground |
 | hotkey.py | InputListener：WH_KEYBOARD_LL 键盘钩子、Raw Input 鼠标侧键、前台切换事件；学习新截图键 |
 | capture.py、d3d.py | WGC 抓帧，D3D 设备只建在驱动该显示器的显卡上，GDI（mss）兜底；D3D11 用纯 ctypes |

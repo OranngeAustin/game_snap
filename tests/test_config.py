@@ -3,13 +3,18 @@
 2. 正常文件：覆盖到默认值上（浅合并），set() 写回后再读一样；带 BOM 的 UTF-8 也能读；
 3. 读不出来的文件（JSON 写坏了、顶层不是对象）：用默认配置启动，但先把原文件另存一份，
    之后 set() 覆盖 config.json 时用户的游戏名单还在那份备份里；
-4. 正常文件不产生备份。
-只在 <run dir> 里读写。纯 Python，Windows 和 Linux 都能跑。Exit code 1 if anything failed.
+4. 正常文件不产生备份；
+5. 读取时文件被占用（05-windows-verification P2）：放开了就读到真的名单；一直读不了但另存上了，和第 3 项一样；
+   读不了也另存不了（文件被独占），这次运行不写回：set() 返回 False、提示、内存里是新值、原文件一个字节不变。
+   JSON 写坏了又另存不了时同样不写回。Windows 上再用真的独占（CreateFileW 共享模式 0）跑一遍。
+只在 <run dir> 里读写。纯 Python，Windows 和 Linux 都能跑（真的独占只在 Windows 上）。Exit code 1 if anything failed.
 
 usage: python -X utf8 tests/test_config.py <run dir>
 """
 import json
+import shutil
 import sys
+import threading
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -86,6 +91,120 @@ for name, text in BROKEN.items():
     check(f"{name}: config.json readable again", config.Config(p3)["toast"] is False)
     check(f"{name}: user's games still in the backup",
           bool(saved) and "MyGame.exe" in saved[0].read_text(encoding="utf-8"))
+
+print("== 4. file busy while reading")
+REAL_TEXT = json.dumps({"games": {"Real.exe": "真名单"}, "sound": True}, ensure_ascii=False)
+real_read_text, real_copy2 = Path.read_text, shutil.copy2
+
+
+def real_file(name: str, text: str = REAL_TEXT) -> Path:
+    d = RUN / name
+    d.mkdir()
+    p = d / "config.json"
+    p.write_bytes(text.encode("utf-8"))
+    return p
+
+
+def busy_read(target: Path, times: int):
+    """target 前 times 次读取抛 PermissionError，和被独占时一样；返回读取次数的计数。"""
+    calls = [0]
+
+    def fake(self, *a, **k):
+        if self == target:
+            calls[0] += 1
+            if calls[0] <= times:
+                raise PermissionError(13, "另一个程序正在使用此文件（假）")
+        return real_read_text(self, *a, **k)
+    Path.read_text = fake
+    return calls
+
+
+def no_copy(*a, **k):
+    raise PermissionError(13, "另一个程序正在使用此文件（假）")
+
+
+def check_read_only(name: str, c: config.Config) -> None:
+    check(f"{name}: read_only", c.read_only is True)
+    check(f"{name}: defaults used", c.data == config.DEFAULTS)
+    errors: list[int] = []
+    c.on_save_error = lambda: errors.append(1)
+    saved_ok = c.set("toast", False)
+    check(f"{name}: set() says not saved", saved_ok is False)
+    check(f"{name}: new value in memory", c["toast"] is False)
+    check(f"{name}: told the user once", errors == [1], str(errors))
+
+
+p = real_file("read_busy_then_free")
+calls = busy_read(p, 2)
+c = config.Config(p)
+Path.read_text = real_read_text
+check("busy twice: real games loaded", c["games"] == {"Real.exe": "真名单"}, repr(c["games"]))
+check("busy twice: read 3 times", calls[0] == 3, str(calls[0]))
+check("busy twice: not read_only", c.read_only is False)
+check("busy twice: no backup", backups(p.parent) == [], str(backups(p.parent)))
+check("busy twice: set() saves", c.set("toast", False) is True and config.Config(p)["toast"] is False)
+
+p = real_file("read_busy_backup_ok")
+calls = busy_read(p, 10_000)
+c = config.Config(p)
+Path.read_text = real_read_text
+check("busy, backup ok: gave up after 5 reads", calls[0] == 5, str(calls[0]))
+check("busy, backup ok: defaults used", c.data == config.DEFAULTS)
+check("busy, backup ok: not read_only", c.read_only is False)
+saved = backups(p.parent)
+check("busy, backup ok: one backup", len(saved) == 1 and saved[0].read_bytes() == REAL_TEXT.encode("utf-8"))
+
+p = real_file("read_busy_no_backup")
+busy_read(p, 10_000)
+shutil.copy2 = no_copy
+c = config.Config(p)
+Path.read_text, shutil.copy2 = real_read_text, real_copy2
+check_read_only("busy, no backup", c)
+check("busy, no backup: file untouched", p.read_bytes() == REAL_TEXT.encode("utf-8"))
+check("busy, no backup: no temp file left", backups(p.parent) == [], str(backups(p.parent)))
+
+BROKEN_TEXT = '{"games": {"MyGame.exe": "我的游戏",}}'
+p = real_file("bad_json_no_backup", BROKEN_TEXT)
+shutil.copy2 = no_copy
+c = config.Config(p)
+shutil.copy2 = real_copy2
+check_read_only("bad JSON, no backup", c)
+check("bad JSON, no backup: file untouched", p.read_bytes() == BROKEN_TEXT.encode("utf-8"))
+
+if sys.platform == "win32":
+    print("== 5. really locked with share mode 0")
+    import ctypes
+    import ctypes.wintypes as wt
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.restype = wt.HANDLE
+    k32.CreateFileW.argtypes = [wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p, wt.DWORD, wt.DWORD, wt.HANDLE]
+    k32.CloseHandle.argtypes = [wt.HANDLE]
+    GENERIC_READ, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL = 0x80000000, 3, 0x80
+
+    def lock(path: Path) -> wt.HANDLE:
+        h = k32.CreateFileW(str(path), GENERIC_READ, 0, None, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, None)
+        assert h not in (None, wt.HANDLE(-1).value), ctypes.get_last_error()
+        return h
+
+    p = real_file("locked_then_free")
+    h = lock(p)
+    t = threading.Timer(0.3, k32.CloseHandle, [h])
+    t.start()
+    c = config.Config(p)
+    t.join()
+    check("locked 0.3 s: real games loaded", c["games"] == {"Real.exe": "真名单"}, repr(c["games"]))
+    check("locked 0.3 s: not read_only", c.read_only is False)
+    check("locked 0.3 s: no backup", backups(p.parent) == [], str(backups(p.parent)))
+
+    p = real_file("locked_all_along")
+    h = lock(p)
+    c = config.Config(p)
+    check_read_only("locked", c)
+    k32.CloseHandle(h)
+    check("locked: file untouched after release", p.read_bytes() == REAL_TEXT.encode("utf-8"))
+    check("locked: next start reads the real games", config.Config(p)["games"] == {"Real.exe": "真名单"})
+else:
+    print("SKIP  real lock: Windows only")
 
 print("ALL PASSED" if not failures else f"{len(failures)} FAILED: {failures}")
 sys.exit(1 if failures else 0)

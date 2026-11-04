@@ -42,16 +42,31 @@ MAX_NAME = 80   # 文件夹名、文件名里的游戏名最多这么多字符�
 def _safe_name(name: str) -> str:
     """游戏名 → 文件夹名 / 文件名开头。游戏名来自 config.json 或 yuzu 的窗口标题（ROM 元数据），什么都可能有。
     只处理以前会出错的情况（02-findings M2）：只有点和空格（".." 会写到截图根目录外面）、控制字符、Windows 保留名、
-    太长。80 个字符以内、以前就能用的名字一个字不改；超过 80 个字符的会截断（以前约 96 个字符以上就存不下）。"""
+    太长、结尾连续多个点和空格。80 个字符以内、以前就能用的名字一个字不改；超过 80 个字符的会截断（以前约 96 个字符以上就存不下）。"""
     name = re.sub(r'[\\/:*?"<>|]', "_", name).strip()
     name = re.sub(r"[\x00-\x1f]", "_", name)
     if len(name) > MAX_NAME:
         name = name[:MAX_NAME].rstrip(" .")
+    # 结尾连续多个点和空格（Loading...）：建文件夹时 Windows 全部去掉，存文件时这一段在路径中间，最多去掉一个点，
+    # 两边对不上，这个游戏每张都存不下（05-windows-verification P1）。结尾单个点两边一样，不用动（Game.、.hack__G.U.）
+    name = re.sub(r"[ .]{2,}$", "", name)
     if not name.strip(" ."):
         return "未知游戏"
     if name.split(".")[0].rstrip(" ").upper() in _RESERVED:
         name = "_" + name
     return name
+
+
+def _rename_part(tmp: Path, path: Path, retries: int = 5) -> None:
+    """杀毒软件、同步盘刚好在读 .png.part 时改名会抛 PermissionError：隔 0.2 秒重试几次，和 Config.save 一样
+    （docs/review/05-windows-verification.md P5）。仍失败就抛出去。"""
+    for _ in range(retries - 1):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:
+            time.sleep(0.2)
+    tmp.replace(path)
 
 
 def save_png(img: Image.Image, root: Path, game: str, when: datetime,
@@ -71,9 +86,12 @@ def save_png(img: Image.Image, root: Path, game: str, when: datetime,
     tmp = path.with_suffix(".png.part")
     try:
         img.save(tmp, "PNG", pnginfo=info, compress_level=6)
-        tmp.replace(path)
+        _rename_part(tmp, path)
     except Exception:
-        tmp.unlink(missing_ok=True)   # 磁盘满、被占用时不留半截文件（02-findings L11）
+        try:
+            tmp.unlink(missing_ok=True)   # 磁盘满、被占用时不留半截文件（02-findings L11）
+        except OSError as e:
+            log.warning("临时文件删不掉，留在了 %s：%s", tmp, e)   # 往外抛的还是上面那个异常（05 P5）
         raise
     return path
 

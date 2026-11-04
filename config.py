@@ -104,31 +104,44 @@ class Config:
         self.path = path
         self._lock = threading.Lock()
         self.on_save_error = None   # 重试后仍没保存上时调用（App 用它提示），见 save()
+        self.read_only = False      # 启动时读不出来、也没另存上：这次运行不写回，否则原文件就找不回来了
         self.data = copy.deepcopy(DEFAULTS)
         if path.exists():
             try:
-                # utf-8-sig：带 BOM 的也能读（PowerShell 5.1 的 Set-Content -Encoding UTF8、记事本「UTF-8 带 BOM」）
-                loaded = json.loads(path.read_text(encoding="utf-8-sig"))
+                loaded = json.loads(self._read_text())
                 if not isinstance(loaded, dict):
                     raise ValueError(f"顶层应该是 {{...}}，实际是 {type(loaded).__name__}")
                 self.data.update(loaded)
             except Exception:
                 log.exception("配置文件读取失败，使用默认配置：%s", path)
-                self._keep_unreadable()
+                self.read_only = not self._keep_unreadable()
             else:
                 self._check_values()
         else:
             self.save()
 
-    def _keep_unreadable(self, kind: str = "unreadable", what: str = "读不出来的配置文件") -> None:
+    def _read_text(self, retries: int = 5) -> str:
+        """杀毒软件、同步盘短暂独占 config.json 时读取会抛 PermissionError：隔 0.2 秒重试几次，和 save() 一样，
+        不然这次运行用默认配置，之后一次保存就把游戏名单盖掉了（docs/review/05-windows-verification.md P2）。
+        utf-8-sig：带 BOM 的也能读（PowerShell 5.1 的 Set-Content -Encoding UTF8、记事本「UTF-8 带 BOM」）。"""
+        for _ in range(retries - 1):
+            try:
+                return self.path.read_text(encoding="utf-8-sig")
+            except OSError:
+                time.sleep(0.2)
+        return self.path.read_text(encoding="utf-8-sig")
+
+    def _keep_unreadable(self, kind: str = "unreadable", what: str = "读不出来的配置文件") -> bool:
         """读不出来的配置文件先另存一份：之后任何 set() 都会用默认配置覆盖它，
-        用户手改时多了个逗号，游戏名单、截图键就全没了（docs/review/02-findings.md H2）。"""
+        用户手改时多了个逗号，游戏名单、截图键就全没了（docs/review/02-findings.md H2）。返回是否另存上了。"""
         backup = self.path.with_name(f"{self.path.stem}.{kind}_{datetime.now():%Y%m%d_%H%M%S}{self.path.suffix}")
         try:
             shutil.copy2(self.path, backup)
             log.warning("%s另存为 %s，改好后改回 %s 即可", what, backup, self.path.name)
+            return True
         except OSError:
             log.exception("另存%s失败", what)
+            return False
 
     def _check_values(self) -> None:
         """逐键检查类型和范围（docs/review/02-findings.md M5）。以前照单全收：轮询间隔写成 0 会忙等，
@@ -164,6 +177,11 @@ class Config:
         """写回 config.json；返回是否保存上了。杀毒软件、同步盘短暂占着文件时 os.replace 会抛 PermissionError：
         以前直接抛出去，调用方后面的步骤全被打断（更换截图键后监听没换新键、钩子不摘、托盘不刷新）。
         现在隔 0.2 秒重试几次，仍失败就记日志、调用 on_save_error，不抛异常（docs/review/02-findings.md L18）。"""
+        if self.read_only:
+            log.warning("启动时读不出来也没另存上，这次运行不写回，设置没保存：%s", self.path)
+            if self.on_save_error is not None:
+                self.on_save_error()
+            return False
         for attempt in range(retries):
             try:
                 with self._lock:

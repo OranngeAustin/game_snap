@@ -36,7 +36,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | not_games | test_not_games.py | 黑名单格式正确，没拦本机的游戏、模拟器和运行环境 |
 | toast_card | test_toast_card.py | 提示卡片在多组文字、成败、缩放下的像素逐字节不变（云端 Linux 也能跑） |
 | toast_gdi | test_toast_gdi.py | 提示浮层画卡片时 GDI 调用失败（GetDC、CreateCompatibleDC、CreateDIBSection 返回 NULL）：不写 0 地址、不显示、不留下半截的 DC，屏幕 DC 总会还回去。user32 / gdi32 换成假的，不显示窗口（纯 Python，云端 Linux 也能跑） |
-| config | test_config.py | config.json 读写：没有文件时写默认配置、浅合并、读不出来时先另存一份再用默认配置（纯 Python，云端 Linux 也能跑） |
+| config | test_config.py | config.json 读写：没有文件时写默认配置、浅合并、读不出来时先另存一份再用默认配置；读取时被占用：放开了就读到真名单，读不了也另存不了时这次运行不写回，原文件一个字节不变（纯 Python，云端 Linux 也能跑；真的独占只在 Windows 上） |
 | config_values | test_config_values.py | config.json 里的值类型不对、超出范围（轮询间隔 0 或 null、games 为 null、截图键写坏等）：回退默认值并记日志，games / launchers 只去掉不对的项，先另存原文件；合法的值（含边界值、0 / 1 当开关）一个不改（纯 Python，云端 Linux 也能跑） |
 | add_game | test_add_game.py | 「添加游戏…」：提示、拒收、加入、已在名单、超时、和「更换截图键…」互斥、按键和超时同时到；`--launch` 支持链接 |
 | tray_icon | test_tray_icon.py | 托盘图标三种状态的像素逐字节不变、每次返回新对象（云端 Linux 也能跑） |
@@ -45,21 +45,22 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | yuzu_naming | test_yuzu_naming.py | yuzu 截图按窗口标题里的游戏名分文件夹；跨进程读标题；文件名里的非法字符 |
 | clipboard | test_clipboard.py | 复制到剪贴板的数据（CF_DIB）逐字节不变、不改原图、剪贴板被占用时的重试；剪贴板换成假的，不碰真剪贴板（云端 Linux 也能跑） |
 | capture_resize | test_capture_resize.py | 游戏改分辨率后截图会话按新尺寸重建帧池：用假的 WinRT 帧（关闭后读尺寸就报错）走一遍，不抛异常、只重建一次、旧帧都关掉。不碰 WGC / D3D（纯 Python，云端 Linux 也能跑） |
-| safe_name | test_safe_name.py | 游戏名变成文件夹名 / 文件名：以前能用的名字不变；只有点（`..` 不会写到根目录外面）、控制字符、Windows 保留名、超过 80 个字符的名字照规则处理（纯 Python，云端 Linux 也能跑） |
+| safe_name | test_safe_name.py | 游戏名变成文件夹名 / 文件名：以前能用的名字不变；只有点（`..` 不会写到根目录外面）、控制字符、Windows 保留名、超过 80 个字符、结尾连续多个点和空格（`Loading...`）的名字照规则处理，真的存一张（纯 Python，云端 Linux 也能跑；这种名字存不下只在 Windows 上才复现） |
 | dualsense | test_dualsense.py | DualSense 四声道守护的判断逻辑；只读真实注册表；守护线程（有绊线，不会真改） |
 | listener_restart | test_listener_restart.py | 按键监听停了再建（游戏关了又开、添加游戏 / 更换截图键前后）：新监听窗口的消息送到它自己，而不是第一个、已停掉的监听；会真的挂一会儿键盘钩子（F24、不拦任何键）。非 Windows 上打印 SKIP |
 | listener_sync | test_listener_sync.py | 按键监听该挂还是该摘：游戏退出的同时点「更换截图键…」「添加游戏…」，或者学键 / 添加结束的同时检测到游戏，监听都不能被错摘（学键要能超时结束、之后能自动退出）。把线程交错固定下来重放，不靠运气；不挂钩子（纯 Python，云端 Linux 也能跑） |
 | listener_start_fail | test_listener_start_fail.py | 按键监听启动失败（建窗口 / 挂钩子出错）：wait_ready() 返回 False；App 不留下死掉的监听、提示一次、之后需要时重建；更换截图键 / 添加游戏立即复位不卡住；只是启动慢的照旧留着。真的 InputListener 那一项把建窗口换成报错，不挂钩子（纯 Python，云端 Linux 也能跑） |
 | instance_quit | test_instance_quit.py | 单实例的退出信号：拿到互斥体就建好、serve() 之前收到的信号不丢、接管时对方信号晚到会重试、接管后清掉残留信号；App 托盘就绪后才开始等信号，_quit 中途出错也让托盘退出。kernel32 换成假的，不建真的命名对象、不影响正在运行的 GameSnap（纯 Python，云端 Linux 也能跑） |
 | clipboard_error | test_clipboard_error.py | 写剪贴板时 EmptyClipboard / SetClipboardData 出错：copy_to_clipboard 返回 False 不抛异常、剪贴板照样关上；finish_shot 仍提示「已截图」、计数加一。假剪贴板（纯 Python，云端 Linux 也能跑） |
-| save_png_fail | test_save_png_fail.py | save_png 写到一半失败（磁盘满）：异常照常抛出、不留下 .png.part；之后照常保存（纯 Python，云端 Linux 也能跑） |
+| save_png_fail | test_save_png_fail.py | save_png 写到一半失败（磁盘满）：异常照常抛出、不留下 .png.part；改名时被占用：重试后存上，一直占用时异常照常抛出、删掉 .png.part；删也删不掉时抛的还是改名的异常、日志记下留在哪里；之后照常保存（纯 Python，云端 Linux 也能跑；真的占用只在 Windows 上） |
+| log_fail | test_log_fail.py | gamesnap.log、crash.log 打不开或删不掉：不崩溃，`--launch` 和单实例检查照常；日志被另一个进程开着时轮转失败：一行不丢，旧的 .log.1 还在，放开后下一条就轮转成功（纯 Python，云端 Linux 也能跑；真实占用只在 Windows 上） |
 | scan_fail | test_scan_fail.py | 进程检测失败（EnumProcesses 失败或返回 0 个、快照失败）：scan 抛异常而不是返回「没有游戏」，GameWatcher 跳过这一轮不回调。psapi 和快照是假的（纯 Python，云端 Linux 也能跑） |
 | idle_order | test_idle_order.py | 更换截图键 / 添加游戏结束时先重置空闲起点、再清标志：在标志被清掉的那一刻轮询，不会用旧的空闲起点自动退出（纯 Python，云端 Linux 也能跑） |
 | learn_race | test_learn_race.py | 更换截图键时按键和超时同时到：只有一个结果（不会既存了新键又提示「已取消」）。把线程交错固定下来重放（纯 Python，云端 Linux 也能跑） |
 | games_update | test_games_update.py | 「添加游戏」和「移除游戏」同时改游戏名单：两边的改动都留下（内存和 config.json）。把线程交错固定下来重放（纯 Python，云端 Linux 也能跑） |
-| config_save_fail | test_config_save_fail.py | 保存 config.json 时文件被短暂占用：重试后存上；一直占用时不抛异常、提示「设置没保存上」；更换截图键时保存失败，监听照样换新键、钩子照样摘、托盘照样刷新（纯 Python，云端 Linux 也能跑） |
+| config_save_fail | test_config_save_fail.py | 保存 config.json 时文件被短暂占用：重试后存上；一直占用时不抛异常、提示「设置没保存上」；更换截图键时保存失败，监听照样换新键、钩子照样摘、托盘照样刷新；启动时读不出来也没另存上：托盘就绪时弹窗提醒，对话框没人点也不挡住退出（纯 Python，云端 Linux 也能跑） |
 | held_key | test_held_key.py | 截图键「按住」状态不会因为丢了抬起事件而卡住：隔 1.5 秒以上的按下当成新按下；换截图键、开始学键时清掉按住状态。直接调 _handle_key，不挂钩子（纯 Python，云端 Linux 也能跑） |
-| key_name | test_key_name.py | 截图键的显示名：Insert / Delete / Home / End / PgUp / PgDn / 方向键显示自己的名字而不是小键盘键；小键盘、F24、字符键、鼠标侧键不变。user32 是假的（纯 Python，云端 Linux 也能跑） |
+| key_name | test_key_name.py | 截图键的显示名：Insert / Delete / Home / End / PgUp / PgDn / 方向键显示自己的名字而不是小键盘键，Pause、Num Lock、Print Screen 不张冠李戴；Left Windows、Right Ctrl、小键盘、F 键、字符键、鼠标侧键不变。假 user32 的回答抄自真机（纯 Python，云端 Linux 也能跑）；Windows 上再调真实 API 查一遍，不发按键 |
 | win_event_hook | test_win_event_hook.py | 前台切换事件钩子（SetWinEventHook）挂不上时日志里有警告，监听照样启动；挂上时没有。user32 / 建窗口 / 消息循环都是假的（纯 Python，云端 Linux 也能跑） |
 | d3d_staging | test_d3d_staging.py | 换暂存纹理时新建失败：旧纹理只释放一次、指针清零，之后能正常新建。d3d 的 COM 调用换成假的（纯 Python，云端 Linux 也能跑） |
 | d3d_release | test_d3d_release.py | D3D 初始化的异常路径不漏 COM 对象：GetDesc1 抛错时释放这块显卡；取多线程保护接口抛错时释放刚建的 device / context；正常路径不多释放。DXGI / D3D11 换成假的（纯 Python，云端 Linux 也能跑） |

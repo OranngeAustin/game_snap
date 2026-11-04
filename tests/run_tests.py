@@ -42,6 +42,7 @@ QUICK = {
     "instance_quit": ["test_instance_quit.py", "{run}"],
     "clipboard_error": ["test_clipboard_error.py", "{run}"],
     "save_png_fail": ["test_save_png_fail.py", "{run}"],
+    "log_fail": ["test_log_fail.py", "{run}"],
     "scan_fail": ["test_scan_fail.py"],
     "idle_order": ["test_idle_order.py", "{run}"],
     "learn_race": ["test_learn_race.py", "{run}"],
