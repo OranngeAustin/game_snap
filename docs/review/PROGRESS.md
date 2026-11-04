@@ -201,7 +201,11 @@ gamesnap-build 跑 quick / all」。
 
 - L1–L6、L9–L11、L15–L18 ✅（13 项，每项一个 commit、一个新测试，都先确认在修复前失败）；L12–L14 ✅（已在 PR #2–#4 和 M6 里修过）；
   L7、L8 ⏭（修复风险过大）。已有测试的断言一条没改。
-- 云端 quick：27 过 4 失败，失败的仍是 4 个缺 Windows 模块的。all 跑不了。
+- 云端 quick：27 过 4 失败，失败的仍是 4 个缺 Windows 模块的。
+- all（D25）：`run_tests.py all` 在 Linux 上一开头就停下（它先 import watcher 检查 GameSnap 是否在运行，缺 `ctypes.WinDLL`）。
+  5 个 SLOW 测试逐个直接运行，全部在准备阶段失败、还没执行到项目代码：lifecycle_source、add_live 找不到
+  `D:\anaconda3\envs\gamesnap-build\python.exe`；remove_live、multi_exit 找不到 `C:\Windows\System32\PING.EXE`；lifecycle_exe
+  找不到 `dist\GameSnap\GameSnap.exe`。真正跑它们要在 Windows 上先重新打包（会换掉正在用的 GameSnap），留给用户。
 - 没推送 main、没 force push、没删除分支、没合并任何 PR。
 - PR：https://github.com/OranngeAustin/game_snap/pull/6（`claude/low-fixes → claude/medium-fixes`，不合并）。
 
