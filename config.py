@@ -150,6 +150,13 @@ class Config:
             self.data[key] = value
         self.save()
 
+    def update(self, key: str, change) -> None:
+        """在锁里读出旧值、算出新值、写回，再保存。游戏名单要用它改：「添加游戏」和「移除游戏」以前各自
+        读 → 改 → set()，同时发生时后写的会盖掉先写的（docs/review/02-findings.md L17）。change 要返回新对象，不要原地改。"""
+        with self._lock:
+            self.data[key] = change(self.data[key])
+        self.save()
+
     def save(self) -> None:
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)

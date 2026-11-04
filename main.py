@@ -403,7 +403,7 @@ class App:
             self.toast.show(f"已经在名单里了 · {known}", True, primary_rect(), 2500)
         else:
             name = default_game_name(hwnd, exe)
-            self.cfg.set("games", {**self.cfg["games"], exe: name})
+            self.cfg.update("games", lambda games: {**games, exe: name})   # 和「移除游戏」同时改也不丢（L17）
             log.info("添加游戏：%s → %s", exe, name)
             self.toast.show(f"已添加 · {name}（{exe}）", True, primary_rect(), 3000)
         self.refresh_tray()
@@ -429,7 +429,7 @@ class App:
                                            "移除后在它里面按截图键不再截图。要加回来，用「添加游戏…」。"):
                 return
             # 换成新字典，不原地改：进程检测线程可能正在读旧的那个
-            self.cfg.set("games", {k: v for k, v in self.cfg["games"].items() if k != exe})
+            self.cfg.update("games", lambda games: {k: v for k, v in games.items() if k != exe})   # L17
             log.info("移除游戏：%s（%s）", exe, name)
             self.toast.show(f"已移除 · {name}（{exe}）", True, primary_rect(), 2500)
             self.refresh_tray()

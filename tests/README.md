@@ -56,6 +56,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | scan_fail | test_scan_fail.py | 进程检测失败（EnumProcesses 失败或返回 0 个、快照失败）：scan 抛异常而不是返回「没有游戏」，GameWatcher 跳过这一轮不回调。psapi 和快照是假的（纯 Python，云端 Linux 也能跑） |
 | idle_order | test_idle_order.py | 更换截图键 / 添加游戏结束时先重置空闲起点、再清标志：在标志被清掉的那一刻轮询，不会用旧的空闲起点自动退出（纯 Python，云端 Linux 也能跑） |
 | learn_race | test_learn_race.py | 更换截图键时按键和超时同时到：只有一个结果（不会既存了新键又提示「已取消」）。把线程交错固定下来重放（纯 Python，云端 Linux 也能跑） |
+| games_update | test_games_update.py | 「添加游戏」和「移除游戏」同时改游戏名单：两边的改动都留下（内存和 config.json）。把线程交错固定下来重放（纯 Python，云端 Linux 也能跑） |
 | lifecycle_source、lifecycle_exe | test_lifecycle.py | 源码版 / 打包版走一遍：启动 → 检测到游戏 → 关游戏 → 自动退出 |
 | add_live | test_add_live.py | 真程序里「添加游戏…」：等按键时不自动退出、超时、加入后马上生效、游戏关了再退出 |
 | remove_live | test_remove_live.py | 真程序里移除正在运行的游戏：不再跟踪它，按规则自动退出 |
