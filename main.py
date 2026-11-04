@@ -144,6 +144,7 @@ class App:
         self.listener: InputListener | None = None
         self._listener_lock = threading.Lock()
         self._learn_timer: threading.Timer | None = None
+        self._learn_lock = threading.Lock()   # 学到的键和超时可能同时到（L2）
         self.learning = False
         self.adding = False                  # 「添加游戏」：在等用户到游戏里按截图键
         self._add_lock = threading.Lock()
@@ -330,12 +331,13 @@ class App:
         threading.Thread(target=self._finish_learning, args=(binding,), daemon=True).start()
 
     def _finish_learning(self, binding: dict | None) -> None:
-        if not self.learning:
-            return
-        # 学键花的时间不算进“没进游戏”的等待里。先设再清标志：反过来的话，GameWatcher 恰好在两行之间轮询，
-        # 会用旧的 _idle_since 判断，刚结束就自动退出（02-findings L16）
-        self._idle_since = time.monotonic()
-        self.learning = False
+        with self._learn_lock:   # 按键和超时同时到时只算一次：以前既存了新键又提示「已取消」（02-findings L2）
+            if not self.learning:
+                return
+            # 学键花的时间不算进“没进游戏”的等待里。先设再清标志：反过来的话，GameWatcher 恰好在两行之间轮询，
+            # 会用旧的 _idle_since 判断，刚结束就自动退出（02-findings L16）
+            self._idle_since = time.monotonic()
+            self.learning = False
         if self._learn_timer is not None:
             self._learn_timer.cancel()
         if binding:

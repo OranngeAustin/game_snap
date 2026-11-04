@@ -44,6 +44,7 @@ QUICK = {
     "save_png_fail": ["test_save_png_fail.py", "{run}"],
     "scan_fail": ["test_scan_fail.py"],
     "idle_order": ["test_idle_order.py", "{run}"],
+    "learn_race": ["test_learn_race.py", "{run}"],
 }
 SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],
