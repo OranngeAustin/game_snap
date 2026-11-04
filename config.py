@@ -8,6 +8,7 @@ import math
 import os
 import shutil
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -102,6 +103,7 @@ class Config:
     def __init__(self, path: Path = CONFIG_PATH) -> None:
         self.path = path
         self._lock = threading.Lock()
+        self.on_save_error = None   # 重试后仍没保存上时调用（App 用它提示），见 save()
         self.data = copy.deepcopy(DEFAULTS)
         if path.exists():
             try:
@@ -145,18 +147,40 @@ class Config:
     def __getitem__(self, key: str):
         return self.data[key]
 
-    def set(self, key: str, value) -> None:
+    def set(self, key: str, value) -> bool:
+        """改一项并保存；返回是否保存上了（内存里总是新值）。"""
         with self._lock:
             self.data[key] = value
+        return self.save()
+
+    def update(self, key: str, change) -> None:
+        """在锁里读出旧值、算出新值、写回，再保存。游戏名单要用它改：「添加游戏」和「移除游戏」以前各自
+        读 → 改 → set()，同时发生时后写的会盖掉先写的（docs/review/02-findings.md L17）。change 要返回新对象，不要原地改。"""
+        with self._lock:
+            self.data[key] = change(self.data[key])
         self.save()
 
-    def save(self) -> None:
-        with self._lock:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2),
-                           encoding="utf-8")
-            os.replace(tmp, self.path)
+    def save(self, retries: int = 5) -> bool:
+        """写回 config.json；返回是否保存上了。杀毒软件、同步盘短暂占着文件时 os.replace 会抛 PermissionError：
+        以前直接抛出去，调用方后面的步骤全被打断（更换截图键后监听没换新键、钩子不摘、托盘不刷新）。
+        现在隔 0.2 秒重试几次，仍失败就记日志、调用 on_save_error，不抛异常（docs/review/02-findings.md L18）。"""
+        for attempt in range(retries):
+            try:
+                with self._lock:
+                    self.path.parent.mkdir(parents=True, exist_ok=True)
+                    tmp = self.path.with_suffix(".tmp")
+                    tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2),
+                                   encoding="utf-8")
+                    os.replace(tmp, self.path)
+                return True
+            except OSError:
+                if attempt == retries - 1:
+                    log.exception("配置文件保存失败：%s", self.path)
+                    if self.on_save_error is not None:
+                        self.on_save_error()
+                    return False
+                time.sleep(0.2)
+        return False
 
     def games_lower(self) -> dict[str, str]:
         return {k.lower(): v for k, v in self.data["games"].items()}

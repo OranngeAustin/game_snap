@@ -138,12 +138,16 @@ class CaptureWorker(threading.Thread):
 class App:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
+        # 设置重试后仍没写进 config.json（文件被占用）：提示一下，程序照常往下走（L18）
+        cfg.on_save_error = lambda: self.toast.show("设置没保存上（config.json 被占用），详见日志", False,
+                                                    primary_rect(), 3000)
         self.games: dict[int, str] = {}   # 正在运行的游戏 {pid: 显示名}
         self.paused = False
         self.shot_count = 0
         self.listener: InputListener | None = None
         self._listener_lock = threading.Lock()
         self._learn_timer: threading.Timer | None = None
+        self._learn_lock = threading.Lock()   # 学到的键和超时可能同时到（L2）
         self.learning = False
         self.adding = False                  # 「添加游戏」：在等用户到游戏里按截图键
         self._add_lock = threading.Lock()
@@ -330,10 +334,13 @@ class App:
         threading.Thread(target=self._finish_learning, args=(binding,), daemon=True).start()
 
     def _finish_learning(self, binding: dict | None) -> None:
-        if not self.learning:
-            return
-        self.learning = False
-        self._idle_since = time.monotonic()   # 学键花的时间不算进“没进游戏”的等待里
+        with self._learn_lock:   # 按键和超时同时到时只算一次：以前既存了新键又提示「已取消」（02-findings L2）
+            if not self.learning:
+                return
+            # 学键花的时间不算进“没进游戏”的等待里。先设再清标志：反过来的话，GameWatcher 恰好在两行之间轮询，
+            # 会用旧的 _idle_since 判断，刚结束就自动退出（02-findings L16）
+            self._idle_since = time.monotonic()
+            self.learning = False
         if self._learn_timer is not None:
             self._learn_timer.cancel()
         if binding:
@@ -388,9 +395,9 @@ class App:
                 if not exe or lower in NOT_GAMES or lower in self.cfg.launchers_lower():
                     self._add_hint(f"这不是游戏窗口（{exe or '未知程序'}），请在游戏画面里按截图键", False)
                     return   # 接着等，直到超时
+            self._idle_since = time.monotonic()   # 等按键的时间不算进「没进游戏」的等待里；先设再清标志（L16）
             self.adding = False
             self._add_timer.cancel()
-            self._idle_since = time.monotonic()   # 等按键的时间不算进「没进游戏」的等待里
         known = self.cfg.games_lower().get(exe.lower()) if exe else None
         if exe is None:
             self.toast.show("没收到截图键，没有添加游戏", False, primary_rect(), 2000)
@@ -399,7 +406,7 @@ class App:
             self.toast.show(f"已经在名单里了 · {known}", True, primary_rect(), 2500)
         else:
             name = default_game_name(hwnd, exe)
-            self.cfg.set("games", {**self.cfg["games"], exe: name})
+            self.cfg.update("games", lambda games: {**games, exe: name})   # 和「移除游戏」同时改也不丢（L17）
             log.info("添加游戏：%s → %s", exe, name)
             self.toast.show(f"已添加 · {name}（{exe}）", True, primary_rect(), 3000)
         self.refresh_tray()
@@ -425,7 +432,7 @@ class App:
                                            "移除后在它里面按截图键不再截图。要加回来，用「添加游戏…」。"):
                 return
             # 换成新字典，不原地改：进程检测线程可能正在读旧的那个
-            self.cfg.set("games", {k: v for k, v in self.cfg["games"].items() if k != exe})
+            self.cfg.update("games", lambda games: {k: v for k, v in games.items() if k != exe})   # L17
             log.info("移除游戏：%s（%s）", exe, name)
             self.toast.show(f"已移除 · {name}（{exe}）", True, primary_rect(), 2500)
             self.refresh_tray()

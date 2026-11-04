@@ -125,8 +125,12 @@ def find_adapter(luid: tuple[int, int] | None) -> tuple[int | None, str]:
             if enum(i, ctypes.byref(adapter)) != 0:   # DXGI_ERROR_NOT_FOUND：枚举完了
                 return None, ""
             desc = DXGI_ADAPTER_DESC1()
-            _method(adapter.value, 10, ctypes.HRESULT, ctypes.POINTER(DXGI_ADAPTER_DESC1))(
-                ctypes.byref(desc))
+            try:
+                _method(adapter.value, 10, ctypes.HRESULT, ctypes.POINTER(DXGI_ADAPTER_DESC1))(
+                    ctypes.byref(desc))
+            except Exception:
+                release(adapter.value)   # 以前抛错时这块显卡不释放（02-findings L6）
+                raise
             if desc.AdapterLuid.key() == luid:
                 return adapter.value, desc.Description
             release(adapter.value)
@@ -148,9 +152,16 @@ class Device:
                                  ctypes.byref(dev), None, ctypes.byref(ctx))
         self.device, self.context = dev.value, ctx.value
         # WGC 的帧池会在它自己的线程里用这个设备，打开多线程保护
-        mt = query_interface(self.context, IID_ID3D11Multithread)
-        _method(mt, 5, wt.BOOL, wt.BOOL)(True)   # SetMultithreadProtected
-        release(mt)
+        try:
+            mt = query_interface(self.context, IID_ID3D11Multithread)
+            try:
+                _method(mt, 5, wt.BOOL, wt.BOOL)(True)   # SetMultithreadProtected
+            finally:
+                release(mt)
+        except Exception:
+            release(self.context)   # 以前抛错时刚建好的设备不释放（02-findings L6）
+            release(self.device)
+            raise
         self._staging = 0
         self._staging_size = (0, 0)
 
@@ -162,6 +173,8 @@ class Device:
         """把 GPU 纹理拷进暂存纹理并映射，调用 consume(数据地址, 每行字节数)；返回前解除映射。"""
         if self._staging_size != (width, height):
             release(self._staging)
+            # 马上清掉：下面新建失败的话不留悬空指针，下次不会释放后使用、重复释放（02-findings L5）
+            self._staging, self._staging_size = 0, (0, 0)
             desc = D3D11_TEXTURE2D_DESC(Width=width, Height=height, MipLevels=1, ArraySize=1,
                                         Format=DXGI_FORMAT_B8G8R8A8_UNORM, SampleCount=1,
                                         Usage=D3D11_USAGE_STAGING, CPUAccessFlags=D3D11_CPU_ACCESS_READ)

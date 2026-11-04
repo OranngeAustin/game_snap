@@ -81,8 +81,13 @@ class ProcessScanner:
     def _pids(self) -> set[int]:
         while True:
             used = wt.DWORD()
-            _psapi.EnumProcesses(self._buf, ctypes.sizeof(self._buf), ctypes.byref(used))
+            # 失败时抛异常，GameWatcher 跳过这一轮：以前返回空，等于「游戏全退出了」，会摘钩子，
+            # 连续失败到 exit_grace_sec 还会在游戏中途退出（02-findings L15）
+            if not _psapi.EnumProcesses(self._buf, ctypes.sizeof(self._buf), ctypes.byref(used)):
+                raise OSError(f"EnumProcesses 失败 err={ctypes.get_last_error()}")
             n = used.value // ctypes.sizeof(wt.DWORD)
+            if n == 0:
+                raise OSError("EnumProcesses 没列出任何进程")
             if n < len(self._buf):
                 return set(self._buf[:n])
             self._buf = (wt.DWORD * (len(self._buf) * 2))()   # 缓冲区满了，可能没列全
@@ -93,7 +98,10 @@ class ProcessScanner:
         pids = self._pids()
         now = time.monotonic()
         if not pids <= self._names.keys() or now >= self._next_full:
-            self._names = snapshot_names()
+            names = snapshot_names()
+            if not names:   # 有进程在跑，快照不可能是空的：是快照失败了
+                raise OSError("进程快照失败")
+            self._names = names
             self._next_full = now + FULL_REFRESH_SEC
         else:
             for gone in self._names.keys() - pids:

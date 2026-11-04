@@ -51,6 +51,19 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | listener_sync | test_listener_sync.py | 按键监听该挂还是该摘：游戏退出的同时点「更换截图键…」「添加游戏…」，或者学键 / 添加结束的同时检测到游戏，监听都不能被错摘（学键要能超时结束、之后能自动退出）。把线程交错固定下来重放，不靠运气；不挂钩子（纯 Python，云端 Linux 也能跑） |
 | listener_start_fail | test_listener_start_fail.py | 按键监听启动失败（建窗口 / 挂钩子出错）：wait_ready() 返回 False；App 不留下死掉的监听、提示一次、之后需要时重建；更换截图键 / 添加游戏立即复位不卡住；只是启动慢的照旧留着。真的 InputListener 那一项把建窗口换成报错，不挂钩子（纯 Python，云端 Linux 也能跑） |
 | instance_quit | test_instance_quit.py | 单实例的退出信号：拿到互斥体就建好、serve() 之前收到的信号不丢、接管时对方信号晚到会重试、接管后清掉残留信号；App 托盘就绪后才开始等信号，_quit 中途出错也让托盘退出。kernel32 换成假的，不建真的命名对象、不影响正在运行的 GameSnap（纯 Python，云端 Linux 也能跑） |
+| clipboard_error | test_clipboard_error.py | 写剪贴板时 EmptyClipboard / SetClipboardData 出错：copy_to_clipboard 返回 False 不抛异常、剪贴板照样关上；finish_shot 仍提示「已截图」、计数加一。假剪贴板（纯 Python，云端 Linux 也能跑） |
+| save_png_fail | test_save_png_fail.py | save_png 写到一半失败（磁盘满）：异常照常抛出、不留下 .png.part；之后照常保存（纯 Python，云端 Linux 也能跑） |
+| scan_fail | test_scan_fail.py | 进程检测失败（EnumProcesses 失败或返回 0 个、快照失败）：scan 抛异常而不是返回「没有游戏」，GameWatcher 跳过这一轮不回调。psapi 和快照是假的（纯 Python，云端 Linux 也能跑） |
+| idle_order | test_idle_order.py | 更换截图键 / 添加游戏结束时先重置空闲起点、再清标志：在标志被清掉的那一刻轮询，不会用旧的空闲起点自动退出（纯 Python，云端 Linux 也能跑） |
+| learn_race | test_learn_race.py | 更换截图键时按键和超时同时到：只有一个结果（不会既存了新键又提示「已取消」）。把线程交错固定下来重放（纯 Python，云端 Linux 也能跑） |
+| games_update | test_games_update.py | 「添加游戏」和「移除游戏」同时改游戏名单：两边的改动都留下（内存和 config.json）。把线程交错固定下来重放（纯 Python，云端 Linux 也能跑） |
+| config_save_fail | test_config_save_fail.py | 保存 config.json 时文件被短暂占用：重试后存上；一直占用时不抛异常、提示「设置没保存上」；更换截图键时保存失败，监听照样换新键、钩子照样摘、托盘照样刷新（纯 Python，云端 Linux 也能跑） |
+| held_key | test_held_key.py | 截图键「按住」状态不会因为丢了抬起事件而卡住：隔 1.5 秒以上的按下当成新按下；换截图键、开始学键时清掉按住状态。直接调 _handle_key，不挂钩子（纯 Python，云端 Linux 也能跑） |
+| key_name | test_key_name.py | 截图键的显示名：Insert / Delete / Home / End / PgUp / PgDn / 方向键显示自己的名字而不是小键盘键；小键盘、F24、字符键、鼠标侧键不变。user32 是假的（纯 Python，云端 Linux 也能跑） |
+| win_event_hook | test_win_event_hook.py | 前台切换事件钩子（SetWinEventHook）挂不上时日志里有警告，监听照样启动；挂上时没有。user32 / 建窗口 / 消息循环都是假的（纯 Python，云端 Linux 也能跑） |
+| d3d_staging | test_d3d_staging.py | 换暂存纹理时新建失败：旧纹理只释放一次、指针清零，之后能正常新建。d3d 的 COM 调用换成假的（纯 Python，云端 Linux 也能跑） |
+| d3d_release | test_d3d_release.py | D3D 初始化的异常路径不漏 COM 对象：GetDesc1 抛错时释放这块显卡；取多线程保护接口抛错时释放刚建的 device / context；正常路径不多释放。DXGI / D3D11 换成假的（纯 Python，云端 Linux 也能跑） |
+| session_init_fail | test_session_init_fail.py | 截图会话建到一半失败（建会话、start_capture 失败）：已建的帧池 / 会话不被 GC 关掉，异常照常抛出；正常建好不受影响。假的 WinRT 对象（纯 Python，云端 Linux 也能跑） |
 | lifecycle_source、lifecycle_exe | test_lifecycle.py | 源码版 / 打包版走一遍：启动 → 检测到游戏 → 关游戏 → 自动退出 |
 | add_live | test_add_live.py | 真程序里「添加游戏…」：等按键时不自动退出、超时、加入后马上生效、游戏关了再退出 |
 | remove_live | test_remove_live.py | 真程序里移除正在运行的游戏：不再跟踪它，按规则自动退出 |
