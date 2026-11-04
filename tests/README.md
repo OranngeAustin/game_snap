@@ -47,6 +47,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | dualsense | test_dualsense.py | DualSense 四声道守护的判断逻辑；只读真实注册表；守护线程（有绊线，不会真改） |
 | listener_restart | test_listener_restart.py | 按键监听停了再建（游戏关了又开、添加游戏 / 更换截图键前后）：新监听窗口的消息送到它自己，而不是第一个、已停掉的监听；会真的挂一会儿键盘钩子（F24、不拦任何键）。非 Windows 上打印 SKIP |
 | listener_sync | test_listener_sync.py | 按键监听该挂还是该摘：游戏退出的同时点「更换截图键…」「添加游戏…」，或者学键 / 添加结束的同时检测到游戏，监听都不能被错摘（学键要能超时结束、之后能自动退出）。把线程交错固定下来重放，不靠运气；不挂钩子（纯 Python，云端 Linux 也能跑） |
+| listener_start_fail | test_listener_start_fail.py | 按键监听启动失败（建窗口 / 挂钩子出错）：wait_ready() 返回 False；App 不留下死掉的监听、提示一次、之后需要时重建；更换截图键 / 添加游戏立即复位不卡住；只是启动慢的照旧留着。真的 InputListener 那一项把建窗口换成报错，不挂钩子（纯 Python，云端 Linux 也能跑） |
 | lifecycle_source、lifecycle_exe | test_lifecycle.py | 源码版 / 打包版走一遍：启动 → 检测到游戏 → 关游戏 → 自动退出 |
 | add_live | test_add_live.py | 真程序里「添加游戏…」：等按键时不自动退出、超时、加入后马上生效、游戏关了再退出 |
 | remove_live | test_remove_live.py | 真程序里移除正在运行的游戏：不再跟踪它，按规则自动退出 |

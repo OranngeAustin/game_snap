@@ -128,6 +128,7 @@ class InputListener(threading.Thread):
         self._swallow_up_vk = None    # 学习模式吞掉的键，其抬起也吞掉
         self._raw_registered = False
         self._hwnd = 0
+        self._failed = False          # run() 里建窗口或挂钩子失败
         self._class_name = unique_class_name("GameSnapInput")   # 每个监听一个窗口类，见 winapi.unique_class_name
         self._ready = threading.Event()
         # ctypes 回调必须保持引用，否则会被回收导致崩溃
@@ -153,7 +154,8 @@ class InputListener(threading.Thread):
         self.join(timeout=2)
 
     def wait_ready(self, timeout: float = 2) -> bool:
-        return self._ready.wait(timeout)
+        """True = 已就绪；False = 启动失败（线程随即结束），或者 timeout 内还没就绪（02-findings M4）。"""
+        return self._ready.wait(timeout) and not self._failed
 
     def _post(self, msg: int) -> None:
         if self._ready.wait(2) and self._hwnd:
@@ -174,6 +176,11 @@ class InputListener(threading.Thread):
             log.info("按键监听已启动")
         except Exception:
             log.exception("按键监听启动失败")
+            self._failed = True
+            if kb_hook:   # 挂上一半的钩子拆掉，不留给没有消息循环的线程
+                user32.UnhookWindowsHookEx(kb_hook)
+            if we_hook:
+                user32.UnhookWinEvent(we_hook)
             self._ready.set()
             return
         self._ready.set()

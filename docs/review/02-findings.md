@@ -78,6 +78,11 @@
   结束的对象（`self.listener` 不是 None），直到游戏名单再次变空才重建。这期间截图键、学键、添加游戏都无效，用户只看到没反应。
 - **修复建议**：记一个启动成功标志；`_ensure_listener` 检查它或 `is_alive()`，失败就置 None 并提示，下次再试。
 - **把握**：高（路径确定），触发少。
+- **状态**：✅ 已修复（`claude/medium-fixes`）。`InputListener` 启动失败时记 `_failed`、拆掉挂上一半的钩子，`wait_ready()` 返回 False；
+  `_sync_listener` 在 `wait_ready()` 为 False 时等线程最多 0.5 秒：已结束就不留这个监听、记日志并提示「按键监听没启动起来」，下次需要监听
+  （检测到游戏、更换截图键、添加游戏）时重建；线程还活着（只是启动慢）就照旧留着，免得挂上两个钩子。`start_learning` / `start_adding`
+  拿不到监听时立即复位 learning / adding。**没做**按轮询自动重试：一直失败时会每 2 秒刷一次日志和提示，留给人工决定。新测试
+  `tests/test_listener_start_fail.py`：修复前 12 项失败，修复后全过。
 
 ### M5 配置值不校验类型和范围
 - **位置**：`config.py:57`、`watcher.py:150`、`main.py:161`、`main.py:169`

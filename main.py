@@ -240,14 +240,22 @@ class App:
         with self._listener_lock:
             want = bool(self.games) or self.learning or self.adding
             if want and self.listener is None:
-                self.listener = InputListener(
+                listener = InputListener(
                     self.cfg["hotkey"], self.should_capture,
                     on_shot=self._on_key,
                     on_foreground=lambda h, p: self.worker.post("fg", h, p),
                     on_learned=self._on_learned,
                 )
-                self.listener.start()
-                self.listener.wait_ready()
+                listener.start()
+                if not listener.wait_ready():
+                    listener.join(0.5)   # 启动失败时线程马上结束；只是启动得慢就还活着，照旧留着
+                    if not listener.is_alive():
+                        # 以前留着这个死掉的监听，截图键、学键、添加游戏都静默失效（02-findings M4）
+                        log.warning("按键监听没启动起来，截图键暂时无效；之后需要监听时"
+                                    "（检测到游戏、更换截图键、添加游戏）会再试")
+                        self.toast.show("按键监听没启动起来，截图键暂时无效，详见日志", False, primary_rect(), 3000)
+                        return None
+                self.listener = listener
             elif not want and self.listener is not None:
                 self.listener.stop()
                 self.listener = None
@@ -294,7 +302,12 @@ class App:
         if self.learning or self.adding:
             return
         self.learning = True
-        self._sync_listener().start_learning()   # learning 已置位，一定挂着；别的线程也不会摘
+        listener = self._sync_listener()   # learning 已置位，挂上之后别的线程不会摘
+        if listener is None:               # 监听没启动起来（已提示），不进入学键状态
+            self.learning = False
+            self._sync_listener()
+            return
+        listener.start_learning()
         self.toast.show("请按下新的截图键或鼠标侧键（Esc 取消）", True, primary_rect(),
                         LEARN_TIMEOUT_SEC * 1000)
         self._learn_timer = threading.Timer(LEARN_TIMEOUT_SEC, self._learn_timeout)
@@ -341,7 +354,11 @@ class App:
         self._add_timer = threading.Timer(ADD_TIMEOUT_SEC, self._finish_adding, args=(0, 0, True))
         self._add_timer.daemon = True
         self.adding = True   # 计时器先建好：游戏开着时监听已在运行，置位后按键随时可能到
-        self._sync_listener()
+        if self._sync_listener() is None:   # 监听没启动起来（已提示），不进入等待
+            self.adding = False
+            self._add_timer.cancel()
+            self._sync_listener()
+            return
         self._add_timer.start()
         self._add_hint(f"切到要添加的游戏里，按一下截图键 {key_name(self.cfg['hotkey'])}", True)
 

@@ -109,7 +109,7 @@ gamesnap-build 跑 quick / all」。
 | M5 | ✅ | 新增 config_values：修复前 93 项失败并抛异常，修复后全过 | 见 D16 |
 | M6 | ✅ | 新增 tray_refresh：修复前 3 项失败，修复后全过 | 见 D17 |
 | M1 | ✅ | 新增 capture_resize：修复前 3 项失败，修复后全过 | 两行改动，无取舍 |
-| M4 | ⏳ | | |
+| M4 | ✅ | 新增 listener_start_fail：修复前 12 项失败，修复后全过 | 见 D18 |
 | M8 | ⏳ | | |
 | M2 | ⏳ | | |
 | M3 | ⏳ | | |
@@ -136,4 +136,8 @@ gamesnap-build 跑 quick / all」。
   「tray refreshed」（`update_menu` 次数增加），菜单里的游戏名单也确实会变。锁里调用的 pystray 操作（Shell_NotifyIcon、LoadImage、
   CreatePopupMenu）都不会同步等托盘线程处理消息，托盘线程在菜单回调里调 refresh_tray 等锁也不会死锁。Q1（菜单显示中被 DestroyMenu）
   不在这把锁的覆盖范围，仍留在待人工确认。
+- **D18 M4 的取舍**：①区分「启动失败」和「启动慢」：`wait_ready()` 为 False 后再 `join(0.5)`，线程已结束才算失败；还活着就照旧留着，
+  否则那个慢线程之后挂上钩子，再建一个就是两个钩子、一次按键截两张。②「下次再试」只在下次需要监听时（检测到游戏、更换截图键、
+  添加游戏）重建，不按轮询自动重试：一直失败时每 2 秒一条日志加一次提示太吵。③已有测试的 FakeListener 的 `wait_ready()` 都返回
+  True，所以不会走到新加的 `join` / `is_alive`，不用改它们。
 
