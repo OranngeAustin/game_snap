@@ -46,6 +46,7 @@ QUICK = {
     "idle_order": ["test_idle_order.py", "{run}"],
     "learn_race": ["test_learn_race.py", "{run}"],
     "games_update": ["test_games_update.py", "{run}"],
+    "config_save_fail": ["test_config_save_fail.py", "{run}"],
 }
 SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],

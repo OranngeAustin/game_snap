@@ -138,6 +138,9 @@ class CaptureWorker(threading.Thread):
 class App:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
+        # 设置重试后仍没写进 config.json（文件被占用）：提示一下，程序照常往下走（L18）
+        cfg.on_save_error = lambda: self.toast.show("设置没保存上（config.json 被占用），详见日志", False,
+                                                    primary_rect(), 3000)
         self.games: dict[int, str] = {}   # 正在运行的游戏 {pid: 显示名}
         self.paused = False
         self.shot_count = 0
