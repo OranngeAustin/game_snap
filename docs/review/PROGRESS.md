@@ -203,4 +203,5 @@ gamesnap-build 跑 quick / all」。
   L7、L8 ⏭（修复风险过大）。已有测试的断言一条没改。
 - 云端 quick：27 过 4 失败，失败的仍是 4 个缺 Windows 模块的。all 跑不了。
 - 没推送 main、没 force push、没删除分支、没合并任何 PR。
+- PR：https://github.com/OranngeAustin/game_snap/pull/6（`claude/low-fixes → claude/medium-fixes`，不合并）。
 
