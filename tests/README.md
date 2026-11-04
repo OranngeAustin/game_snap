@@ -38,6 +38,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | add_game | test_add_game.py | 「添加游戏…」：提示、拒收、加入、已在名单、超时、和「更换截图键…」互斥、按键和超时同时到；`--launch` 支持链接 |
 | blocklist_remove | test_blocklist_remove.py | 黑名单拦截和放行的样例；「游戏名单」移除：确认、取消、过期的菜单项、名字带 `&`、空名单、原生 Win32 菜单 |
 | yuzu_naming | test_yuzu_naming.py | yuzu 截图按窗口标题里的游戏名分文件夹；跨进程读标题；文件名里的非法字符 |
+| clipboard | test_clipboard.py | 复制到剪贴板的数据（CF_DIB）逐字节不变、不改原图、剪贴板被占用时的重试；剪贴板换成假的，不碰真剪贴板（云端 Linux 也能跑） |
 | dualsense | test_dualsense.py | DualSense 四声道守护的判断逻辑；只读真实注册表；守护线程（有绊线，不会真改） |
 | listener_restart | test_listener_restart.py | 按键监听停了再建（游戏关了又开、添加游戏 / 更换截图键前后）：新监听窗口的消息送到它自己，而不是第一个、已停掉的监听；会真的挂一会儿键盘钩子（F24、不拦任何键）。非 Windows 上打印 SKIP |
 | lifecycle_source、lifecycle_exe | test_lifecycle.py | 源码版 / 打包版走一遍：启动 → 检测到游戏 → 关游戏 → 自动退出 |
