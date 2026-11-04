@@ -162,6 +162,8 @@ class Device:
         """把 GPU 纹理拷进暂存纹理并映射，调用 consume(数据地址, 每行字节数)；返回前解除映射。"""
         if self._staging_size != (width, height):
             release(self._staging)
+            # 马上清掉：下面新建失败的话不留悬空指针，下次不会释放后使用、重复释放（02-findings L5）
+            self._staging, self._staging_size = 0, (0, 0)
             desc = D3D11_TEXTURE2D_DESC(Width=width, Height=height, MipLevels=1, ArraySize=1,
                                         Format=DXGI_FORMAT_B8G8R8A8_UNORM, SampleCount=1,
                                         Usage=D3D11_USAGE_STAGING, CPUAccessFlags=D3D11_CPU_ACCESS_READ)

@@ -61,6 +61,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | held_key | test_held_key.py | 截图键「按住」状态不会因为丢了抬起事件而卡住：隔 1.5 秒以上的按下当成新按下；换截图键、开始学键时清掉按住状态。直接调 _handle_key，不挂钩子（纯 Python，云端 Linux 也能跑） |
 | key_name | test_key_name.py | 截图键的显示名：Insert / Delete / Home / End / PgUp / PgDn / 方向键显示自己的名字而不是小键盘键；小键盘、F24、字符键、鼠标侧键不变。user32 是假的（纯 Python，云端 Linux 也能跑） |
 | win_event_hook | test_win_event_hook.py | 前台切换事件钩子（SetWinEventHook）挂不上时日志里有警告，监听照样启动；挂上时没有。user32 / 建窗口 / 消息循环都是假的（纯 Python，云端 Linux 也能跑） |
+| d3d_staging | test_d3d_staging.py | 换暂存纹理时新建失败：旧纹理只释放一次、指针清零，之后能正常新建。d3d 的 COM 调用换成假的（纯 Python，云端 Linux 也能跑） |
 | lifecycle_source、lifecycle_exe | test_lifecycle.py | 源码版 / 打包版走一遍：启动 → 检测到游戏 → 关游戏 → 自动退出 |
 | add_live | test_add_live.py | 真程序里「添加游戏…」：等按键时不自动退出、超时、加入后马上生效、游戏关了再退出 |
 | remove_live | test_remove_live.py | 真程序里移除正在运行的游戏：不再跟踪它，按规则自动退出 |
