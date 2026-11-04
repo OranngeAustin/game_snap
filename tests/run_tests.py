@@ -25,6 +25,7 @@ QUICK = {
     "not_games": ["test_not_games.py"],
     "toast_card": ["test_toast_card.py", "{run}"],
     "config": ["test_config.py", "{run}"],
+    "config_values": ["test_config_values.py", "{run}"],
     "add_game": ["test_add_game.py", "{run}"],
     "tray_icon": ["test_tray_icon.py", "{run}"],
     "blocklist_remove": ["test_blocklist_remove.py", "{run}"],

@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import math
 import os
 import shutil
 import threading
@@ -48,6 +49,55 @@ DEFAULTS: dict = {
 }
 
 
+_BOOL_KEYS = ("copy_to_clipboard", "toast", "sound", "dualsense_quad")
+_MIN_SEC = {"poll_interval_sec": 0.1, "exit_grace_sec": 0, "wait_no_launcher_sec": 0}   # 秒数的下限
+
+
+def _is_int(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _valid_hotkey(v) -> bool:
+    if not isinstance(v, dict):
+        return False
+    if v.get("type") == "key":
+        return _is_int(v.get("vk")) and 1 <= v["vk"] <= 254
+    if v.get("type") == "mouse":
+        return _is_int(v.get("button")) and v["button"] in (4, 5)
+    return False
+
+
+def _checked(key: str, value):
+    """返回 (要用的值, 问题)；值合法时问题为 None。不合法就用默认值；games / launchers 只去掉不对的那几项。"""
+    default = DEFAULTS[key]
+    if key in _BOOL_KEYS:
+        if isinstance(value, bool):
+            return value, None
+        if _is_int(value) and value in (0, 1):   # 以前按真假值用，0 / 1 照旧
+            return bool(value), None
+        return default, "应为 true 或 false"
+    if key in _MIN_SEC:
+        low = _MIN_SEC[key]
+        if (_is_int(value) or isinstance(value, float)) and math.isfinite(value) and value >= low:
+            return value, None
+        return default, f"应为不小于 {low} 的秒数"
+    if key == "save_dir":
+        return (value, None) if isinstance(value, str) else (default, "应为文件夹路径字符串，留空 = 图片\\GameShots")
+    if key == "hotkey":
+        return (value, None) if _valid_hotkey(value) else (default, "建议用托盘菜单「更换截图键…」改")
+    if key == "launchers":
+        if not isinstance(value, list):
+            return default, "应为进程名列表"
+        kept = [n for n in value if isinstance(n, str) and n]
+        return kept, None if len(kept) == len(value) else "去掉了不是进程名的项"
+    if key == "games":
+        if not isinstance(value, dict):
+            return default, '应为 {"进程名.exe": "文件夹名"}'
+        kept = {k: v for k, v in value.items() if k and isinstance(v, str)}
+        return kept, None if len(kept) == len(value) else "去掉了进程名为空或文件夹名不是字符串的项"
+    return value, None
+
+
 class Config:
     def __init__(self, path: Path = CONFIG_PATH) -> None:
         self.path = path
@@ -63,18 +113,34 @@ class Config:
             except Exception:
                 log.exception("配置文件读取失败，使用默认配置：%s", path)
                 self._keep_unreadable()
+            else:
+                self._check_values()
         else:
             self.save()
 
-    def _keep_unreadable(self) -> None:
+    def _keep_unreadable(self, kind: str = "unreadable", what: str = "读不出来的配置文件") -> None:
         """读不出来的配置文件先另存一份：之后任何 set() 都会用默认配置覆盖它，
         用户手改时多了个逗号，游戏名单、截图键就全没了（docs/review/02-findings.md H2）。"""
-        backup = self.path.with_name(f"{self.path.stem}.unreadable_{datetime.now():%Y%m%d_%H%M%S}{self.path.suffix}")
+        backup = self.path.with_name(f"{self.path.stem}.{kind}_{datetime.now():%Y%m%d_%H%M%S}{self.path.suffix}")
         try:
             shutil.copy2(self.path, backup)
-            log.warning("读不出来的配置文件另存为 %s，改好后改回 %s 即可", backup, self.path.name)
+            log.warning("%s另存为 %s，改好后改回 %s 即可", what, backup, self.path.name)
         except OSError:
-            log.exception("另存读不出来的配置文件失败")
+            log.exception("另存%s失败", what)
+
+    def _check_values(self) -> None:
+        """逐键检查类型和范围（docs/review/02-findings.md M5）。以前照单全收：轮询间隔写成 0 会忙等，
+        写成 null 进程检测线程就死掉、不再自动退出，games 写成 null 一启动就崩。不合法的回退默认值并记日志；
+        有改动时先把原文件另存一份，理由同 _keep_unreadable。"""
+        changed = False
+        for key in DEFAULTS:
+            value, problem = _checked(key, self.data[key])
+            if problem:
+                log.warning("配置项 %s 的值 %r 不合法（%s），改用 %r", key, self.data[key], problem, value)
+                changed = True
+            self.data[key] = value
+        if changed:
+            self._keep_unreadable("invalid", "有不合法值的配置文件")
 
     def __getitem__(self, key: str):
         return self.data[key]

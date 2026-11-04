@@ -106,7 +106,7 @@ gamesnap-build 跑 quick / all」。
 |---|---|---|---|
 | 合并 #2–#4 | ✅ | quick 6 过 4 失败（同基线） | 见 D12 |
 | M7 | ✅ | 新增 listener_sync：修复前 6 项失败，修复后全过 | 见 D15 |
-| M5 | ⏳ | | |
+| M5 | ✅ | 新增 config_values：修复前 93 项失败并抛异常，修复后全过 | 见 D16 |
 | M6 | ⏳ | | |
 | M1 | ⏳ | | |
 | M4 | ⏳ | | |
@@ -128,4 +128,8 @@ gamesnap-build 跑 quick / all」。
   `self.games` 的赋值没有挪进锁：每个改状态的线程都是先改、再调 `_sync_listener`，最后拿到锁的那次一定看到所有改动，
   不需要多拿一次锁。「添加游戏」成功后**不摘**监听的行为保持不变（test_add_game「listener left running for the new game」、
   test_add_live「hook stayed on … == 1」依赖它）。`_quit` 仍用无条件的 `_stop_listener`。
+- **D16 M5 的取舍**：①开关的 0 / 1 继续当成 false / true（以前靠真假值判断，写 0 的人原来就能关掉），只有字符串、null、2 这类才回退；
+  ②games / launchers 只去掉个别坏项而不是整个回退，免得一项写错就丢掉整份游戏名单；③有改动就另存原文件，因为之后的 `set()`
+  会把改过的配置写回去；④轮询间隔下限 0.1 秒（防忙等），没设上限。核对过所有已有测试写的配置：轮询 1 秒、宽限 1–10 秒、
+  截图键 0xC0 / F24，都在合法范围，校验不会改动它们。
 

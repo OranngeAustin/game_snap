@@ -86,6 +86,10 @@
 - **修复建议**：加载后按 `DEFAULTS` 逐键校验类型（games 是 dict[str,str]、launchers 是 list[str]、数值 > 0 并设下限），不合法的键
   回退默认值并记日志；`_get_interval()` 挪进 try。
 - **把握**：高。
+- **状态**：✅ 已修复（`claude/medium-fixes`）。`Config` 读完后逐键校验：开关要 true / false（0 / 1 照旧当开关）、秒数要是有限数字且不低于下限
+  （轮询 0.1，另两个 0）、截图键要是合法的键盘 / 鼠标侧键绑定、save_dir 要是字符串；不合法的回退默认值并记日志；games / launchers
+  只去掉不对的项。有改动时先把原文件另存为 `config.invalid_<时间>.json`（同 H2）。`_get_interval()` 没挪进 try：值在加载时已保证合法，
+  运行中只有托盘开关会 `set()`，不会写坏它。新测试 `tests/test_config_values.py`：修复前 93 项失败、并在 `launchers_lower()` 抛异常，修复后全过。
 
 ### M6 `refresh_tray` 被多个线程同时调用，pystray 不是线程安全的
 - **位置**：`main.py:421-426`；pystray `_win32.py`（venv 里 0.19.5）的 `_update_icon` / `_update_menu`
