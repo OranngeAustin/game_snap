@@ -172,6 +172,7 @@ gamesnap-build 跑 quick / all」。
 | L10 | ✅ | 新增 clipboard_error：修复前 6 项失败，修复后全过 |
 | L11 | ✅ | 新增 save_png_fail：修复前 1 项失败，修复后全过 |
 | L15 | ✅ | 新增 scan_fail：修复前 7 项失败，修复后全过 |
+| L16 | ✅ | 新增 idle_order：修复前 4 项失败，修复后全过 |
 <!-- 低危进度表末尾 -->
 
 - **D22 测试范围**：同 D14，「每次修复后运行全部测试」在云端只能跑 quick 里不依赖 Windows 的那些；all 的 5 个和 4 个 Windows quick

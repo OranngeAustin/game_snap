@@ -332,8 +332,10 @@ class App:
     def _finish_learning(self, binding: dict | None) -> None:
         if not self.learning:
             return
+        # 学键花的时间不算进“没进游戏”的等待里。先设再清标志：反过来的话，GameWatcher 恰好在两行之间轮询，
+        # 会用旧的 _idle_since 判断，刚结束就自动退出（02-findings L16）
+        self._idle_since = time.monotonic()
         self.learning = False
-        self._idle_since = time.monotonic()   # 学键花的时间不算进“没进游戏”的等待里
         if self._learn_timer is not None:
             self._learn_timer.cancel()
         if binding:
@@ -388,9 +390,9 @@ class App:
                 if not exe or lower in NOT_GAMES or lower in self.cfg.launchers_lower():
                     self._add_hint(f"这不是游戏窗口（{exe or '未知程序'}），请在游戏画面里按截图键", False)
                     return   # 接着等，直到超时
+            self._idle_since = time.monotonic()   # 等按键的时间不算进「没进游戏」的等待里；先设再清标志（L16）
             self.adding = False
             self._add_timer.cancel()
-            self._idle_since = time.monotonic()   # 等按键的时间不算进「没进游戏」的等待里
         known = self.cfg.games_lower().get(exe.lower()) if exe else None
         if exe is None:
             self.toast.show("没收到截图键，没有添加游戏", False, primary_rect(), 2000)
