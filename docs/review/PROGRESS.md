@@ -96,3 +96,36 @@ gamesnap-build 跑 quick / all」。
 - 跳过的（都写明了原因，见各阶段和 00-SUMMARY.md「跳过的项和原因」）：Windows 专属测试（quick 4 个、all 5 个、
   listener_restart 的真正运行）、bench_startup 和打包、中低级问题的修复、save_png 压缩级别、Pillow 大版本升级。
 - 未在 Windows 上验证：H1、H2、P1–P3 全部。下一步见 00-SUMMARY.md。
+
+## 中危修复（2026-11-04，分支 `claude/medium-fixes`）
+
+用户新目标：先把 PR #2–#4 合进 `claude/review-fixes`；再从它建 `claude/medium-fixes`，修 02-findings 的中危问题（M7 优先），
+每个问题一个 commit、能写测试的先写测试；误报、纯风格、修复风险过大的标「⏭ 跳过」。只遵守 RUNBOOK 的「工作规则」，不重跑阶段 0–7。
+
+| 编号 | 状态 | 测试 | 说明 |
+|---|---|---|---|
+| 合并 #2–#4 | ✅ | quick 6 过 4 失败（同基线） | 见 D12 |
+| M7 | ✅ | 新增 listener_sync：修复前 6 项失败，修复后全过 | 见 D15 |
+| M5 | ⏳ | | |
+| M6 | ⏳ | | |
+| M1 | ⏳ | | |
+| M4 | ⏳ | | |
+| M8 | ⏳ | | |
+| M2 | ⏳ | | |
+| M3 | ⏳ | | |
+
+- **D12 合并 #2–#4**：RUNBOOK 工作规则禁止合并 PR，但用户这次明确要求把 #2–#4 合进 `claude/review-fixes`，以用户的话为准，
+  其余 PR（#1 → main、本次新 PR）不合并。做法是在本地依次 `git merge --no-ff` 三个 perf 分支（无冲突），跑 quick
+  （6 过 4 失败，失败的仍是 4 个缺 Windows 模块的），再推送 `claude/review-fixes`；GitHub 据此自动把 #2–#4 标为已合并。
+  没碰 main。
+- **D13 新 PR 的目标分支**：用户写的是「目标分支设为 claude/medium-fixes」，但那就是这个 PR 的源分支，自己合进自己不成立。
+  按「从 claude/review-fixes 创建分支」理解为 `claude/medium-fixes → claude/review-fixes`，这样 PR 里只有中危修复的改动。
+- **D14 「每次修复后运行全部测试」**：云端能跑的是 quick 里不依赖 Windows 的那些（not_games、config、toast_card、
+  tray_icon、clipboard、listener_restart 打印 SKIP）和本次新增的测试；add_game、blocklist_remove、yuzu_naming、dualsense
+  以及 all 的 5 个只能在 Windows 上跑（同 D2）。每次改动都对照这些跑不了的测试里**相关的断言**逐条核对过，写在各 commit 和 PR 里。
+- **D15 M7 的修法**：按 02-findings 的建议，把 `_ensure_listener` 和各处「锁外判断 + `_stop_listener`」合并成
+  `_sync_listener()`：在 `_listener_lock` 里按 games / learning / adding 决定挂还是摘；`_learn_timeout` 不再要求监听还在。
+  `self.games` 的赋值没有挪进锁：每个改状态的线程都是先改、再调 `_sync_listener`，最后拿到锁的那次一定看到所有改动，
+  不需要多拿一次锁。「添加游戏」成功后**不摘**监听的行为保持不变（test_add_game「listener left running for the new game」、
+  test_add_live「hook stayed on … == 1」依赖它）。`_quit` 仍用无条件的 `_stop_listener`。
+

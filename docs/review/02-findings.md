@@ -108,6 +108,9 @@
 - **修复建议**：合并成一个 `_sync_listener()`，在 `_listener_lock` 里按当前 `games` / `learning` / `adding` 决定挂还是摘；
   `_on_games_changed` 给 `self.games` 赋值也放进这把锁；`_learn_timeout` 不再依赖 `self.listener`。
 - **把握**：机制为高；需要点击和游戏启停落在同一瞬间，发生概率低。
+- **状态**：✅ 已修复（`claude/medium-fixes`）。新增 `_sync_listener()`，所有挂 / 摘都经过它；`_learn_timeout` 不再要求监听还在。
+  `self.games` 的赋值没挪进锁（不需要，理由见 PROGRESS D15）。新测试 `tests/test_listener_sync.py` 把上面四种交错固定下来重放：
+  修复前 6 项失败（学键时监听被摘、学键永不结束、不再自动退出、添加游戏时监听被摘、两种「这局游戏没监听」），修复后全过。
 
 ### M8 退出信号建得太晚，接管和启动交错时可能卡死
 - **位置**：`instance.py:93-96`、`106-120`，`main.py:597-599`、`451-461`

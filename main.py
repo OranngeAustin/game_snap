@@ -214,23 +214,30 @@ class App:
         self.games = games
         if games:
             log.info("检测到游戏：%s", ", ".join(f"{n}(pid {p})" for p, n in games.items()))
-            self._ensure_listener()
+            self._sync_listener()
             hwnd, pid = foreground()
             self.worker.post("warmup", hwnd)
             self.worker.post("fg", hwnd, pid)
         else:
             log.info("游戏已全部退出；启动器也关掉后 %d 秒，GameSnap 退出", self.cfg["exit_grace_sec"])
-            if not self.learning and not self.adding:
-                self._stop_listener()
+            self._sync_listener()   # 正在更换截图键、添加游戏时不摘
         self.refresh_tray()
 
     def _auto_quit(self, reason: str) -> None:
         log.info("自动退出：%s", reason)
         self._quit(self.icon, None)
 
-    def _ensure_listener(self) -> InputListener:
+    def _sync_listener(self) -> InputListener | None:
+        """按当前状态挂上或摘掉按键监听，返回挂着的那个（没挂时为 None）。
+        有游戏在运行、正在更换截图键或添加游戏时挂，否则摘。
+
+        「该不该挂」的判断和真正挂 / 摘在同一把锁里（02-findings M7）。改 games / learning / adding 的线程
+        改完都调一次这里，最后拿到锁的那次看到的是各线程都改完之后的状态。以前是锁外先判断、再进锁挂或摘，
+        中间别的线程可能刚开始用这个监听（更换截图键、添加游戏）或刚检测到游戏，结果监听被摘掉，
+        学键永远不结束、GameSnap 不再自动退出，或者这局游戏截图键没反应。"""
         with self._listener_lock:
-            if self.listener is None:
+            want = bool(self.games) or self.learning or self.adding
+            if want and self.listener is None:
                 self.listener = InputListener(
                     self.cfg["hotkey"], self.should_capture,
                     on_shot=self._on_key,
@@ -239,6 +246,9 @@ class App:
                 )
                 self.listener.start()
                 self.listener.wait_ready()
+            elif not want and self.listener is not None:
+                self.listener.stop()
+                self.listener = None
             return self.listener
 
     def _stop_listener(self) -> None:
@@ -282,7 +292,7 @@ class App:
         if self.learning or self.adding:
             return
         self.learning = True
-        self._ensure_listener().start_learning()
+        self._sync_listener().start_learning()   # learning 已置位，一定挂着；别的线程也不会摘
         self.toast.show("请按下新的截图键或鼠标侧键（Esc 取消）", True, primary_rect(),
                         LEARN_TIMEOUT_SEC * 1000)
         self._learn_timer = threading.Timer(LEARN_TIMEOUT_SEC, self._learn_timeout)
@@ -290,9 +300,12 @@ class App:
         self._learn_timer.start()
 
     def _learn_timeout(self) -> None:
-        if self.learning and self.listener is not None:
-            self.listener.cancel_learning()
-            self._finish_learning(None)
+        if not self.learning:
+            return
+        listener = self.listener
+        if listener is not None:
+            listener.cancel_learning()
+        self._finish_learning(None)   # 监听不在了也要结束学键，否则 learning 一直是 True、不再自动退出
 
     def _on_learned(self, binding: dict | None) -> None:
         # 在监听线程里被调用：保存配置等耗时操作挪到别的线程
@@ -314,8 +327,7 @@ class App:
             winsound.MessageBeep(winsound.MB_OK)
         else:
             self.toast.show("已取消更换截图键", False, primary_rect(), 1500)
-        if not self.games:
-            self._stop_listener()
+        self._sync_listener()   # 没游戏、也没在添加游戏就摘掉
         self.refresh_tray()
 
     # ---------- 添加 / 移除游戏 ----------
@@ -327,7 +339,7 @@ class App:
         self._add_timer = threading.Timer(ADD_TIMEOUT_SEC, self._finish_adding, args=(0, 0, True))
         self._add_timer.daemon = True
         self.adding = True   # 计时器先建好：游戏开着时监听已在运行，置位后按键随时可能到
-        self._ensure_listener()
+        self._sync_listener()
         self._add_timer.start()
         self._add_hint(f"切到要添加的游戏里，按一下截图键 {key_name(self.cfg['hotkey'])}", True)
 
@@ -360,8 +372,7 @@ class App:
         known = self.cfg.games_lower().get(exe.lower()) if exe else None
         if exe is None:
             self.toast.show("没收到截图键，没有添加游戏", False, primary_rect(), 2000)
-            if not self.games and not self.learning:
-                self._stop_listener()
+            self._sync_listener()   # 没游戏、也没在更换截图键就摘掉
         elif known:
             self.toast.show(f"已经在名单里了 · {known}", True, primary_rect(), 2500)
         else:

@@ -32,6 +32,7 @@ QUICK = {
     "clipboard": ["test_clipboard.py", "{run}"],
     "dualsense": ["test_dualsense.py"],
     "listener_restart": ["test_listener_restart.py", "{run}"],
+    "listener_sync": ["test_listener_sync.py", "{run}"],
 }
 SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],
