@@ -228,25 +228,36 @@ class Toast(threading.Thread):
         margin = round(24 * scale)
         x, y = rect[2] - w - margin, rect[1] + margin
 
-        self._free_bitmap()
-        screen = user32.GetDC(None)
-        self._memdc = gdi32.CreateCompatibleDC(screen)
-        bmi = BITMAPINFOHEADER(biSize=ctypes.sizeof(BITMAPINFOHEADER), biWidth=w,
-                               biHeight=-h, biPlanes=1, biBitCount=32, biCompression=0)
-        bits = ctypes.c_void_p()
-        self._bitmap = gdi32.CreateDIBSection(screen, ctypes.byref(bmi), 0,
-                                              ctypes.byref(bits), None, 0)
         data = _premultiplied_bgra(card)
-        ctypes.memmove(bits, data, len(data))
-        self._old_bmp = gdi32.SelectObject(self._memdc, self._bitmap)
+        self._free_bitmap()
+        # GDI 配额耗尽、内存不足时下面几个都可能返回 NULL：以前不查，memmove 写 0 地址，进程在游戏中途消失（02-findings M3）
+        screen = user32.GetDC(None)
+        if not screen:
+            log.warning("GetDC 失败，这次不显示提示：%s", text)
+            return
+        try:
+            self._memdc = gdi32.CreateCompatibleDC(screen)
+            bits = ctypes.c_void_p()
+            if self._memdc:
+                bmi = BITMAPINFOHEADER(biSize=ctypes.sizeof(BITMAPINFOHEADER), biWidth=w,
+                                       biHeight=-h, biPlanes=1, biBitCount=32, biCompression=0)
+                self._bitmap = gdi32.CreateDIBSection(screen, ctypes.byref(bmi), 0,
+                                                      ctypes.byref(bits), None, 0)
+            if not (self._memdc and self._bitmap and bits.value):
+                log.warning("建提示位图失败（GDI 资源不足？），这次不显示提示：%s", text)
+                self._free_bitmap()
+                return
+            ctypes.memmove(bits, data, len(data))
+            self._old_bmp = gdi32.SelectObject(self._memdc, self._bitmap)
 
-        self._alpha = self._max_alpha
-        blend = BLENDFUNCTION(0, 0, self._alpha, AC_SRC_ALPHA)
-        user32.UpdateLayeredWindow(self._hwnd, screen, ctypes.byref(wt.POINT(x, y)),
-                                   ctypes.byref(wt.SIZE(w, h)), self._memdc,
-                                   ctypes.byref(wt.POINT(0, 0)), 0,
-                                   ctypes.byref(blend), ULW_ALPHA)
-        user32.ReleaseDC(None, screen)
+            self._alpha = self._max_alpha
+            blend = BLENDFUNCTION(0, 0, self._alpha, AC_SRC_ALPHA)
+            user32.UpdateLayeredWindow(self._hwnd, screen, ctypes.byref(wt.POINT(x, y)),
+                                       ctypes.byref(wt.SIZE(w, h)), self._memdc,
+                                       ctypes.byref(wt.POINT(0, 0)), 0,
+                                       ctypes.byref(blend), ULW_ALPHA)
+        finally:
+            user32.ReleaseDC(None, screen)   # 中途出错也要还，不然屏幕 DC 泄漏
 
         user32.ShowWindow(self._hwnd, SW_SHOWNOACTIVATE)
         user32.SetWindowPos(self._hwnd, HWND_TOPMOST, 0, 0, 0, 0,

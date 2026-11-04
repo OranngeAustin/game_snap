@@ -96,3 +96,69 @@ gamesnap-build 跑 quick / all」。
 - 跳过的（都写明了原因，见各阶段和 00-SUMMARY.md「跳过的项和原因」）：Windows 专属测试（quick 4 个、all 5 个、
   listener_restart 的真正运行）、bench_startup 和打包、中低级问题的修复、save_png 压缩级别、Pillow 大版本升级。
 - 未在 Windows 上验证：H1、H2、P1–P3 全部。下一步见 00-SUMMARY.md。
+
+## 中危修复（2026-11-04，分支 `claude/medium-fixes`）
+
+用户新目标：先把 PR #2–#4 合进 `claude/review-fixes`；再从它建 `claude/medium-fixes`，修 02-findings 的中危问题（M7 优先），
+每个问题一个 commit、能写测试的先写测试；误报、纯风格、修复风险过大的标「⏭ 跳过」。只遵守 RUNBOOK 的「工作规则」，不重跑阶段 0–7。
+
+| 编号 | 状态 | 测试 | 说明 |
+|---|---|---|---|
+| 合并 #2–#4 | ✅ | quick 6 过 4 失败（同基线） | 见 D12 |
+| M7 | ✅ | 新增 listener_sync：修复前 6 项失败，修复后全过 | 见 D15 |
+| M5 | ✅ | 新增 config_values：修复前 93 项失败并抛异常，修复后全过 | 见 D16 |
+| M6 | ✅ | 新增 tray_refresh：修复前 3 项失败，修复后全过 | 见 D17 |
+| M1 | ✅ | 新增 capture_resize：修复前 3 项失败，修复后全过 | 两行改动，无取舍 |
+| M4 | ✅ | 新增 listener_start_fail：修复前 12 项失败，修复后全过 | 见 D18 |
+| M8 | ✅ | 新增 instance_quit：修复前 11 项失败，修复后全过 | 见 D19 |
+| M2 | ✅ | 新增 safe_name：修复前 18 项失败，修复后全过 | 见 D20 |
+| M3 | ✅ | 新增 toast_gdi：修复前 10 项失败，修复后全过 | 按 02-findings 建议，无取舍 |
+| M9 | ⏭ 跳过 | | 要升 Pillow 大版本，工作规则不允许，且要在 Windows 上重新打包验证 |
+| 建 PR | ✅ | quick 14 过 4 失败（连跑 3 次一样） | https://github.com/OranngeAustin/game_snap/pull/5（`claude/medium-fixes → claude/review-fixes`，不合并），见 D13、D21 |
+
+- **D12 合并 #2–#4**：RUNBOOK 工作规则禁止合并 PR，但用户这次明确要求把 #2–#4 合进 `claude/review-fixes`，以用户的话为准，
+  其余 PR（#1 → main、本次新 PR）不合并。做法是在本地依次 `git merge --no-ff` 三个 perf 分支（无冲突），跑 quick
+  （6 过 4 失败，失败的仍是 4 个缺 Windows 模块的），再推送 `claude/review-fixes`；GitHub 据此自动把 #2–#4 标为已合并。
+  没碰 main。
+- **D13 新 PR 的目标分支**：用户写的是「目标分支设为 claude/medium-fixes」，但那就是这个 PR 的源分支，自己合进自己不成立。
+  按「从 claude/review-fixes 创建分支」理解为 `claude/medium-fixes → claude/review-fixes`，这样 PR 里只有中危修复的改动。
+  用户中途补充「完成后把所有中级修复合并入 claude/medium-fixes，不合并入 main」：每项修复本来就直接提交在 `claude/medium-fixes` 上，
+  所以都已经在这个分支里；PR 只用来审阅，不合并，也没碰 main。
+- **D14 「每次修复后运行全部测试」**：云端能跑的是 quick 里不依赖 Windows 的那些（not_games、config、toast_card、
+  tray_icon、clipboard、listener_restart 打印 SKIP）和本次新增的测试；add_game、blocklist_remove、yuzu_naming、dualsense
+  以及 all 的 5 个只能在 Windows 上跑（同 D2）。每次改动都对照这些跑不了的测试里**相关的断言**逐条核对过，写在各 commit 和 PR 里。
+- **D15 M7 的修法**：按 02-findings 的建议，把 `_ensure_listener` 和各处「锁外判断 + `_stop_listener`」合并成
+  `_sync_listener()`：在 `_listener_lock` 里按 games / learning / adding 决定挂还是摘；`_learn_timeout` 不再要求监听还在。
+  `self.games` 的赋值没有挪进锁：每个改状态的线程都是先改、再调 `_sync_listener`，最后拿到锁的那次一定看到所有改动，
+  不需要多拿一次锁。「添加游戏」成功后**不摘**监听的行为保持不变（test_add_game「listener left running for the new game」、
+  test_add_live「hook stayed on … == 1」依赖它）。`_quit` 仍用无条件的 `_stop_listener`。
+- **D16 M5 的取舍**：①开关的 0 / 1 继续当成 false / true（以前靠真假值判断，写 0 的人原来就能关掉），只有字符串、null、2 这类才回退；
+  ②games / launchers 只去掉个别坏项而不是整个回退，免得一项写错就丢掉整份游戏名单；③有改动就另存原文件，因为之后的 `set()`
+  会把改过的配置写回去；④轮询间隔下限 0.1 秒（防忙等），没设上限。核对过所有已有测试写的配置：轮询 1 秒、宽限 1–10 秒、
+  截图键 0xC0 / F24，都在合法范围，校验不会改动它们。
+- **D17 M6 的范围**：只做 02-findings 建议的「整体加锁 + 状态没变不设图标」。菜单照旧每次重建：blocklist_remove 断言移除游戏后
+  「tray refreshed」（`update_menu` 次数增加），菜单里的游戏名单也确实会变。锁里调用的 pystray 操作（Shell_NotifyIcon、LoadImage、
+  CreatePopupMenu）都不会同步等托盘线程处理消息，托盘线程在菜单回调里调 refresh_tray 等锁也不会死锁。Q1（菜单显示中被 DestroyMenu）
+  不在这把锁的覆盖范围，仍留在待人工确认。
+- **D18 M4 的取舍**：①区分「启动失败」和「启动慢」：`wait_ready()` 为 False 后再 `join(0.5)`，线程已结束才算失败；还活着就照旧留着，
+  否则那个慢线程之后挂上钩子，再建一个就是两个钩子、一次按键截两张。②「下次再试」只在下次需要监听时（检测到游戏、更换截图键、
+  添加游戏）重建，不按轮询自动重试：一直失败时每 2 秒一条日志加一次提示太吵。③已有测试的 FakeListener 的 `wait_ready()` 都返回
+  True，所以不会走到新加的 `join` / `is_alive`，不用改它们。
+- **D19 M8 的测法和一处补充**：命名互斥体 / 事件在测试里不能真建（会和正在运行的 GameSnap 抢同一个名字），所以测试把
+  `instance._k32` 换成按名字记对象的假实现，`ctypes.get_last_error` 也由它提供。补充了一处 02-findings 没写的：接管成功后马上建信号，
+  可能打开被换下实例还没释放的那个事件，上面还留着发给它的信号，不清掉的话本实例一开始等就会关掉自己，所以 `ResetEvent`。
+  `App.on_tray_ready` 是新加的可选回调，已有测试建 App 时不设它，行为不变；add_live / remove_live 的 inner 脚本是包一层再调真的
+  `_on_tray_ready`，回调照样会被调用。
+- **D20 M2 没照搬 `strip(" .")`**：截图文件夹名变了，用户就会觉得同一个游戏的截图「分到了两个文件夹」。所以原则是以前能用的名字不改，
+  只改以前会出错的；唯一的例外是截断（81–96 个字符的名字在截图根目录很短时以前也能存），取 02-findings 建议的 80。
+- **D21 一处测试时序问题**：M3 之后跑 quick 时，M4 新加的 listener_start_fail 偶发一次「学键计时器没开」失败（单独跑 12 次都过）：
+  上一节取消的计时器线程还没结束。另起一个 commit（471f99d），在那一节开始前先 join 这个已取消的计时器，断言不变；之后 quick 连跑 3 次都是
+  14 过 4 失败。
+
+### 中危修复的最终状态
+
+- M1–M8 全部 ✅，每项一个 commit，先写测试、确认它在修复前失败，再修；另有一个 M4 测试的时序修正 commit。M9 ⏭（理由见上表）。
+- 新增 8 个测试，都登记进 run_tests.py 的 QUICK 和 tests/README.md，都能在云端 Linux 和 Windows 上跑。已有测试的断言一条没改。
+- 云端 quick：14 过 4 失败，失败的仍是 add_game、blocklist_remove、yuzu_naming、dualsense（缺 Windows 模块，同基线）。all 跑不了。
+- 没推送 main、没 force push、没删除分支；除了用户明确要求的 #2–#4，没合并任何 PR。
+

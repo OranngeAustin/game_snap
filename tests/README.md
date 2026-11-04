@@ -35,14 +35,22 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 |---|---|---|
 | not_games | test_not_games.py | 黑名单格式正确，没拦本机的游戏、模拟器和运行环境 |
 | toast_card | test_toast_card.py | 提示卡片在多组文字、成败、缩放下的像素逐字节不变（云端 Linux 也能跑） |
+| toast_gdi | test_toast_gdi.py | 提示浮层画卡片时 GDI 调用失败（GetDC、CreateCompatibleDC、CreateDIBSection 返回 NULL）：不写 0 地址、不显示、不留下半截的 DC，屏幕 DC 总会还回去。user32 / gdi32 换成假的，不显示窗口（纯 Python，云端 Linux 也能跑） |
 | config | test_config.py | config.json 读写：没有文件时写默认配置、浅合并、读不出来时先另存一份再用默认配置（纯 Python，云端 Linux 也能跑） |
+| config_values | test_config_values.py | config.json 里的值类型不对、超出范围（轮询间隔 0 或 null、games 为 null、截图键写坏等）：回退默认值并记日志，games / launchers 只去掉不对的项，先另存原文件；合法的值（含边界值、0 / 1 当开关）一个不改（纯 Python，云端 Linux 也能跑） |
 | add_game | test_add_game.py | 「添加游戏…」：提示、拒收、加入、已在名单、超时、和「更换截图键…」互斥、按键和超时同时到；`--launch` 支持链接 |
 | tray_icon | test_tray_icon.py | 托盘图标三种状态的像素逐字节不变、每次返回新对象（云端 Linux 也能跑） |
+| tray_refresh | test_tray_refresh.py | 多个线程同时刷新托盘：换图标不交叠、晚到的线程不会用旧状态盖掉新状态、图标状态没变不重设（菜单和提示文字照样更新）。不建托盘图标（纯 Python，云端 Linux 也能跑） |
 | blocklist_remove | test_blocklist_remove.py | 黑名单拦截和放行的样例；「游戏名单」移除：确认、取消、过期的菜单项、名字带 `&`、空名单、原生 Win32 菜单 |
 | yuzu_naming | test_yuzu_naming.py | yuzu 截图按窗口标题里的游戏名分文件夹；跨进程读标题；文件名里的非法字符 |
 | clipboard | test_clipboard.py | 复制到剪贴板的数据（CF_DIB）逐字节不变、不改原图、剪贴板被占用时的重试；剪贴板换成假的，不碰真剪贴板（云端 Linux 也能跑） |
+| capture_resize | test_capture_resize.py | 游戏改分辨率后截图会话按新尺寸重建帧池：用假的 WinRT 帧（关闭后读尺寸就报错）走一遍，不抛异常、只重建一次、旧帧都关掉。不碰 WGC / D3D（纯 Python，云端 Linux 也能跑） |
+| safe_name | test_safe_name.py | 游戏名变成文件夹名 / 文件名：以前能用的名字不变；只有点（`..` 不会写到根目录外面）、控制字符、Windows 保留名、超过 80 个字符的名字照规则处理（纯 Python，云端 Linux 也能跑） |
 | dualsense | test_dualsense.py | DualSense 四声道守护的判断逻辑；只读真实注册表；守护线程（有绊线，不会真改） |
 | listener_restart | test_listener_restart.py | 按键监听停了再建（游戏关了又开、添加游戏 / 更换截图键前后）：新监听窗口的消息送到它自己，而不是第一个、已停掉的监听；会真的挂一会儿键盘钩子（F24、不拦任何键）。非 Windows 上打印 SKIP |
+| listener_sync | test_listener_sync.py | 按键监听该挂还是该摘：游戏退出的同时点「更换截图键…」「添加游戏…」，或者学键 / 添加结束的同时检测到游戏，监听都不能被错摘（学键要能超时结束、之后能自动退出）。把线程交错固定下来重放，不靠运气；不挂钩子（纯 Python，云端 Linux 也能跑） |
+| listener_start_fail | test_listener_start_fail.py | 按键监听启动失败（建窗口 / 挂钩子出错）：wait_ready() 返回 False；App 不留下死掉的监听、提示一次、之后需要时重建；更换截图键 / 添加游戏立即复位不卡住；只是启动慢的照旧留着。真的 InputListener 那一项把建窗口换成报错，不挂钩子（纯 Python，云端 Linux 也能跑） |
+| instance_quit | test_instance_quit.py | 单实例的退出信号：拿到互斥体就建好、serve() 之前收到的信号不丢、接管时对方信号晚到会重试、接管后清掉残留信号；App 托盘就绪后才开始等信号，_quit 中途出错也让托盘退出。kernel32 换成假的，不建真的命名对象、不影响正在运行的 GameSnap（纯 Python，云端 Linux 也能跑） |
 | lifecycle_source、lifecycle_exe | test_lifecycle.py | 源码版 / 打包版走一遍：启动 → 检测到游戏 → 关游戏 → 自动退出 |
 | add_live | test_add_live.py | 真程序里「添加游戏…」：等按键时不自动退出、超时、加入后马上生效、游戏关了再退出 |
 | remove_live | test_remove_live.py | 真程序里移除正在运行的游戏：不再跟踪它，按规则自动退出 |

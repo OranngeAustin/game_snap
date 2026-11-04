@@ -156,13 +156,14 @@ class _Session:
             frame = self.pool.try_get_next_frame()
             if frame is None:
                 return
-            if (frame.content_size.width, frame.content_size.height) != self.size:
+            new_size = frame.content_size   # close() 之后再读会报 RO_E_CLOSED（02-findings M1），先存下来
+            if (new_size.width, new_size.height) != self.size:
                 # 分辨率变了：按新尺寸重建帧池，旧帧都不要了
-                self.size = (frame.content_size.width, frame.content_size.height)
+                self.size = (new_size.width, new_size.height)
                 log.info("画面尺寸变为 %dx%d，重建帧池", *self.size)
                 frame.close()
                 self._drop_held()
-                self.pool.recreate(self._gpu.winrt, self._wgc.BGRA, POOL_SIZE, frame.content_size)
+                self.pool.recreate(self._gpu.winrt, self._wgc.BGRA, POOL_SIZE, new_size)
                 continue
             self._drop_held()
             self.held = frame

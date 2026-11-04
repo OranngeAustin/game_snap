@@ -41,7 +41,7 @@ dist\GameSnap\GameSnap.exe --launch "D:\miHoYo Launcher\launcher.exe"
 
 截图保存在 `图片\GameShots\<游戏名>\`，例如 `GameShots\原神\原神_2026-10-11_21-30-05.png`。
 
-yuzu 里的截图按正在玩的 Switch 游戏分文件夹。游戏名取自 yuzu 的窗口标题，和 yuzu 里显示的一样，例如 `GameShots\塞尔达传说 王国之泪\`；停在游戏列表时存到 `GameShots\yuzu\`。文件名里不能用的字符（如 `:`）会换成 `_`。
+yuzu 里的截图按正在玩的 Switch 游戏分文件夹。游戏名取自 yuzu 的窗口标题，和 yuzu 里显示的一样，例如 `GameShots\塞尔达传说 王国之泪\`；停在游戏列表时存到 `GameShots\yuzu\`。文件名里不能用的字符（如 `:`、控制字符）会换成 `_`；游戏名超过 80 个字符时截断；`CON`、`NUL` 这类 Windows 保留名前面加 `_`；只有点（如 `..`）的名字存到 `GameShots\未知游戏\`。
 
 ## 托盘菜单
 
@@ -145,6 +145,8 @@ PS5 手柄（DualSense）用 USB 连接玩原神时，手柄的声音设备要�
 配置文件在 `%APPDATA%\GameSnap\config.json`（第一次运行时生成）。手改时先退出 GameSnap（托盘菜单 → 退出），改完再打开。GameSnap 开着时改的话，它下次保存设置（切换菜单开关、添加或移除游戏）会把你改的覆盖掉。
 
 手改出错、文件读不出来（比如多了个逗号）时，GameSnap 用默认配置启动，并先把读不出来的那份另存为同一文件夹里的 `config.unreadable_<日期_时间>.json`，日志里也会记一笔。之后它保存设置时 `config.json` 会变回默认配置；把另存的那份改好，再改名回 `config.json`（先退出 GameSnap）即可找回原来的游戏名单和截图键。
+
+文件读得出来、但某一项的值不对时（比如 `poll_interval_sec` 写成 0 或 `null`、`games` 写成 `null`、开关写成 `"yes"`），只有那一项用默认值，其他项照常生效；`games` / `launchers` 里个别项不对时只去掉那几项。这种情况同样先把原文件另存为 `config.invalid_<日期_时间>.json`，日志里写明是哪一项、为什么。秒数的下限：`poll_interval_sec` 不小于 0.1，`exit_grace_sec`、`wait_no_launcher_sec` 不小于 0。
 
 - `games`：游戏名单，`{"进程名.exe": "文件夹名"}`。默认包含原神、云原神、星穹铁道、绝区零、崩坏3、yuzu（Switch 模拟器）。用托盘菜单「添加游戏…」加、「游戏名单」移除最方便（见「加别的游戏」）；手加的话，进程名可在任务管理器的「详细信息」页里查到。
 - `save_dir`：截图根目录。留空就是 `图片\GameShots`。

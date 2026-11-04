@@ -24,14 +24,22 @@ PROJECT = HERE.parent
 QUICK = {
     "not_games": ["test_not_games.py"],
     "toast_card": ["test_toast_card.py", "{run}"],
+    "toast_gdi": ["test_toast_gdi.py"],
     "config": ["test_config.py", "{run}"],
+    "config_values": ["test_config_values.py", "{run}"],
     "add_game": ["test_add_game.py", "{run}"],
     "tray_icon": ["test_tray_icon.py", "{run}"],
+    "tray_refresh": ["test_tray_refresh.py", "{run}"],
     "blocklist_remove": ["test_blocklist_remove.py", "{run}"],
     "yuzu_naming": ["test_yuzu_naming.py", "{run}"],
+    "safe_name": ["test_safe_name.py", "{run}"],
     "clipboard": ["test_clipboard.py", "{run}"],
+    "capture_resize": ["test_capture_resize.py"],
     "dualsense": ["test_dualsense.py"],
     "listener_restart": ["test_listener_restart.py", "{run}"],
+    "listener_sync": ["test_listener_sync.py", "{run}"],
+    "listener_start_fail": ["test_listener_start_fail.py", "{run}"],
+    "instance_quit": ["test_instance_quit.py", "{run}"],
 }
 SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],

@@ -8,7 +8,7 @@
 **低** = 推测，放进「待人工确认」。
 
 **合计**：高 2（H1–H2）、中 9（M1–M8，安全 M9）、低 21（L1–L18，安全 L19–L21）、待人工确认 9（Q1–Q9）；安全审计见文末「安全」一节。
-阶段 4 只修「高」：H1、H2。
+阶段 4 只修「高」：H1、H2。中危 M1–M8 在 2026-11-04 的 `claude/medium-fixes` 上修了，状态见「中」一节开头的表。
 
 ## 高
 
@@ -45,6 +45,23 @@
 
 ## 中
 
+**处理状态**（2026-11-04，分支 `claude/medium-fixes`，按 M7 → M5 → M6 → M1 → M4 → M8 → M2 → M3 的顺序，每项一个 commit，先写测试再修）：
+
+| 编号 | 状态 | 新测试（quick） | 修复前 → 修复后 | 没照建议做 / 留给人工的部分 |
+|---|---|---|---|---|
+| M1 | ✅ 已修复 | capture_resize | 3 项失败 → 全过 | 真实 WinRT 关闭后是否报错要在 Windows 上改分辨率确认 |
+| M2 | ✅ 已修复 | safe_name | 18 项失败 → 全过 | 没照搬 `strip(" .")`（会改掉以前能用的名字） |
+| M3 | ✅ 已修复 | toast_gdi | 10 项失败 → 全过 | — |
+| M4 | ✅ 已修复 | listener_start_fail | 12 项失败 → 全过 | 不按轮询自动重试（一直失败时太吵） |
+| M5 | ✅ 已修复 | config_values | 93 项失败并抛异常 → 全过 | `_get_interval()` 没挪进 try（值在加载时已保证合法） |
+| M6 | ✅ 已修复 | tray_refresh | 3 项失败 → 全过 | Q1（菜单显示中被 DestroyMenu）不在锁的范围内 |
+| M7 | ✅ 已修复 | listener_sync | 6 项失败 → 全过 | `self.games` 的赋值没挪进锁（不需要，见 PROGRESS D15） |
+| M8 | ✅ 已修复 | instance_quit | 11 项失败 → 全过 | 真实的接管流程要在 Windows 上试一次 |
+| M9 | ⏭ 跳过 | — | — | 要升 Pillow 大版本：RUNBOOK 工作规则「不升级依赖的大版本」，而且要在 Windows 上重新打包验证 |
+
+全部修复都只在云端 Linux 上跑过测试（Windows 专属的 add_game、blocklist_remove、yuzu_naming、dualsense 和 all 的 5 个跑不了），
+合并前要回 Windows 用 gamesnap-build 跑 quick 和 all。
+
 ### M1 `frame.close()` 之后又读 `frame.content_size` 重建帧池
 - **位置**：`capture.py:163-165`
 - **问题**：分辨率变化（游戏切全屏 / 改分辨率）时，先关闭帧再把 `frame.content_size` 传给 `pool.recreate`。WinRT 的
@@ -52,6 +69,10 @@
 - **后果**：抛异常 → 会话和设备被换下（按设计不关闭，多占一套）→ 这一张截图走重建流程或 GDI，重建帧池的逻辑形同虚设。
 - **修复建议**：`close()` 之前先存下新尺寸再用。改动无副作用。
 - **把握**：中（取决于 pywinrt / WinRT 关闭后读属性是否报错）。
+- **状态**：✅ 已修复（`claude/medium-fixes`）。`close()` 之前把 `content_size` 存进 `new_size`，比较、记录、`recreate` 都用它。
+  `content_size` 是 SizeInt32 值类型，存下的副本不依赖帧对象。新测试 `tests/test_capture_resize.py` 用关闭后读尺寸就报错的假帧
+  走一遍：修复前 3 项失败（抛 RO_E_CLOSED、没重建帧池、手里没帧），修复后全过。真实 WinRT 关闭后是否报错仍要在 Windows 上
+  改分辨率验证（改法本身不管报不报错都对）。
 
 ### M2 `_safe_name` 不处理 `.`、`..`、控制字符、Windows 保留名和超长名字
 - **位置**：`output.py:37-38`（`_safe_name`），名字来源 `main.py:75-77`（yuzu 窗口标题，即 ROM 元数据）、`main.py:84-85`
@@ -60,6 +81,11 @@
   名字约 110 字符起）就保存失败。失败时这个游戏每张都「截图失败」。
 - **修复建议**：替换 `[\x00-\x1f]`；`strip(" .")`；结果为空或命中保留名时加前缀；截断到约 80 字符。
 - **把握**：高（代码事实）；触发概率低。
+- **状态**：✅ 已修复（`claude/medium-fixes`），但**没照搬** `strip(" .")`：它会改掉以前能用的名字（`.hack` 这类以点开头的、以点结尾的），
+  换文件夹。现在只处理以前会出错的：只有点和空格的用「未知游戏」，控制字符换成 `_`，保留名（CON、PRN、AUX、NUL、COM1–9、LPT1–9，
+  不分大小写、带扩展名也算）前面加 `_`，超过 80 个字符截断并去掉截断处的尾部空格和点。唯一会变的以前能用的情况是 81–96 个字符的名字
+  （截图根目录很短时以前也存得下），只可能来自手写或 yuzu 的 ROM 标题。新测试 `tests/test_safe_name.py`：修复前 18 项失败
+  （含 `..` 写到根目录外面），修复后全过；test_yuzu_naming 断言的 Zelda 文件夹名（41 个字符）不变。
 
 ### M3 提示浮层 `CreateDIBSection` 失败后 `memmove` 写 0 地址
 - **位置**：`toast.py:221-238`
@@ -67,6 +93,9 @@
   `ctypes.memmove(bits, …)` 访问违例，进程在游戏中途消失；`GetDC`→`ReleaseDC` 之间抛异常时屏幕 DC 泄漏。
 - **修复建议**：先算 `data`；检查 `self._bitmap and bits.value`，失败就 `_free_bitmap()`、记日志、返回；`ReleaseDC` 放进 finally。
 - **把握**：高（代码事实）；触发概率低。
+- **状态**：✅ 已修复（`claude/medium-fixes`），按建议做：先算 `data`；`GetDC` 失败直接返回；`CreateCompatibleDC` 失败就不建位图；
+  `memdc`、`bitmap`、`bits` 有一个是 NULL 就 `_free_bitmap()`、记日志、这次不显示；`ReleaseDC` 放进 finally。新测试 `tests/test_toast_gdi.py`
+  （假 user32 / gdi32，`memmove` 目标是 0 就报错）：修复前 10 项失败（含写 0 地址），修复后全过。
 
 ### M4 监听启动失败后不重试，截图键静默失效
 - **位置**：`hotkey.py:174-177`，`main.py:239-240`
@@ -74,6 +103,11 @@
   结束的对象（`self.listener` 不是 None），直到游戏名单再次变空才重建。这期间截图键、学键、添加游戏都无效，用户只看到没反应。
 - **修复建议**：记一个启动成功标志；`_ensure_listener` 检查它或 `is_alive()`，失败就置 None 并提示，下次再试。
 - **把握**：高（路径确定），触发少。
+- **状态**：✅ 已修复（`claude/medium-fixes`）。`InputListener` 启动失败时记 `_failed`、拆掉挂上一半的钩子，`wait_ready()` 返回 False；
+  `_sync_listener` 在 `wait_ready()` 为 False 时等线程最多 0.5 秒：已结束就不留这个监听、记日志并提示「按键监听没启动起来」，下次需要监听
+  （检测到游戏、更换截图键、添加游戏）时重建；线程还活着（只是启动慢）就照旧留着，免得挂上两个钩子。`start_learning` / `start_adding`
+  拿不到监听时立即复位 learning / adding。**没做**按轮询自动重试：一直失败时会每 2 秒刷一次日志和提示，留给人工决定。新测试
+  `tests/test_listener_start_fail.py`：修复前 12 项失败，修复后全过。
 
 ### M5 配置值不校验类型和范围
 - **位置**：`config.py:57`、`watcher.py:150`、`main.py:161`、`main.py:169`
@@ -86,6 +120,10 @@
 - **修复建议**：加载后按 `DEFAULTS` 逐键校验类型（games 是 dict[str,str]、launchers 是 list[str]、数值 > 0 并设下限），不合法的键
   回退默认值并记日志；`_get_interval()` 挪进 try。
 - **把握**：高。
+- **状态**：✅ 已修复（`claude/medium-fixes`）。`Config` 读完后逐键校验：开关要 true / false（0 / 1 照旧当开关）、秒数要是有限数字且不低于下限
+  （轮询 0.1，另两个 0）、截图键要是合法的键盘 / 鼠标侧键绑定、save_dir 要是字符串；不合法的回退默认值并记日志；games / launchers
+  只去掉不对的项。有改动时先把原文件另存为 `config.invalid_<时间>.json`（同 H2）。`_get_interval()` 没挪进 try：值在加载时已保证合法，
+  运行中只有托盘开关会 `set()`，不会写坏它。新测试 `tests/test_config_values.py`：修复前 93 项失败、并在 `launchers_lower()` 抛异常，修复后全过。
 
 ### M6 `refresh_tray` 被多个线程同时调用，pystray 不是线程安全的
 - **位置**：`main.py:421-426`；pystray `_win32.py`（venv 里 0.19.5）的 `_update_icon` / `_update_menu`
@@ -96,6 +134,10 @@
 - **修复建议**：`refresh_tray` 整体加锁、状态在锁里算；三种图标预先生成缓存，状态没变就不设 `icon`（也省掉每张截图一次的 PIL
   绘制和写临时 ICO，见 L14）。
 - **把握**：竞争存在为高；可见后果为中。
+- **状态**：✅ 已修复（`claude/medium-fixes`）。`refresh_tray` 整体放进 `_tray_lock`，状态在锁里算；记下托盘上显示的状态，没变就不重设
+  图标（图标缓存已由 P2 做了）。菜单仍每次重建（菜单文字、游戏名单可能变了）。**没解决**的部分：托盘线程正在显示菜单时，别的线程
+  `update_menu` 仍会 `DestroyMenu`（pystray 显示菜单不经过这把锁），即 Q1，要在 Windows 上复现后再定。新测试 `tests/test_tray_refresh.py`：
+  修复前 3 项失败（8 个线程同时换图标、旧状态盖掉新状态、状态没变也重设），修复后全过。
 
 ### M7 「该不该挂监听」的判断和真正挂 / 摘不在同一把锁里
 - **位置**：`main.py:222-223`、`283-284`、`291-294`、`316-317`、`328-329`、`362-363`
@@ -108,6 +150,9 @@
 - **修复建议**：合并成一个 `_sync_listener()`，在 `_listener_lock` 里按当前 `games` / `learning` / `adding` 决定挂还是摘；
   `_on_games_changed` 给 `self.games` 赋值也放进这把锁；`_learn_timeout` 不再依赖 `self.listener`。
 - **把握**：机制为高；需要点击和游戏启停落在同一瞬间，发生概率低。
+- **状态**：✅ 已修复（`claude/medium-fixes`）。新增 `_sync_listener()`，所有挂 / 摘都经过它；`_learn_timeout` 不再要求监听还在。
+  `self.games` 的赋值没挪进锁（不需要，理由见 PROGRESS D15）。新测试 `tests/test_listener_sync.py` 把上面四种交错固定下来重放：
+  修复前 6 项失败（学键时监听被摘、学键永不结束、不再自动退出、添加游戏时监听被摘、两种「这局游戏没监听」），修复后全过。
 
 ### M8 退出信号建得太晚，接管和启动交错时可能卡死
 - **位置**：`instance.py:93-96`、`106-120`，`main.py:597-599`、`451-461`
@@ -118,6 +163,11 @@
 - **修复建议**：拿到互斥体后立即创建 Quit 事件和 Elevated 标记，等待线程在 `_on_tray_ready` 里再启动；`take_over` 对
   `OpenEventW` 重试几秒；`_quit` 用 try/finally 保证调用 `icon.stop`。
 - **把握**：机制为高；窗口只有启动时的几百毫秒，发生概率低。
+- **状态**：✅ 已修复（`claude/medium-fixes`），三处都按建议做了：①`Instance` 拿到互斥体（含接管成功后）立即 `_announce()` 建 Quit 事件和
+  Elevated 标记，`serve()` 只启动等待线程；接管成功后若打开的是被换下实例还没释放的那个事件，先 `ResetEvent` 清掉残留信号。
+  ②`take_over` 对 `OpenEventW` 重试 3 秒。③`main` 通过 `App.on_tray_ready` 在托盘就绪后才调 `serve()`；`_quit` 用 try/except/finally，
+  没启动的截图线程不 join，出错也调用 `icon.stop()`。新测试 `tests/test_instance_quit.py`（假 kernel32，不建真的命名对象）：修复前 11 项失败，
+  修复后全过。真实的接管流程（两个快捷方式先后启动）仍要在 Windows 上试一次。
 
 ## 低
 
@@ -197,6 +247,8 @@
 - **修复建议**：回 Windows 用 `gamesnap-build\python.exe -m pip show pillow` 看实际版本；升到 13.x 是大版本升级（RUNBOOK 禁止
   这里做），需要在 Windows 上跑 `all` 并重新打包验证后再改下限。放进「待人工确认」。
 - **把握**：高（版本事实）；可利用性低。
+- **状态**：⏭ 跳过（2026-11-04 中危修复时）。修它就是把 Pillow 升到 13.x 并提高下限：RUNBOOK 工作规则禁止升级依赖的大版本，
+  而且打包版要在 Windows 上重新打包、跑 all 才能验证，云端做不了。仍在「待人工确认」。
 
 ### 低
 
