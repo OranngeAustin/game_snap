@@ -178,6 +178,7 @@ gamesnap-build 跑 quick / all」。
 | L18 | ✅ | 新增 config_save_fail：修复前 11 项失败，修复后全过 |
 | L1 | ✅ | 新增 held_key：修复前 3 项失败，修复后全过 |
 | L4 | ✅ | 新增 key_name：修复前 10 项失败，修复后全过 |
+| L3 | ✅ | 新增 win_event_hook：修复前 1 项失败，修复后全过 |
 <!-- 低危进度表末尾 -->
 
 - **D22 测试范围**：同 D14，「每次修复后运行全部测试」在云端只能跑 quick 里不依赖 Windows 的那些；all 的 5 个和 4 个 Windows quick

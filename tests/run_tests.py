@@ -49,6 +49,7 @@ QUICK = {
     "config_save_fail": ["test_config_save_fail.py", "{run}"],
     "held_key": ["test_held_key.py"],
     "key_name": ["test_key_name.py"],
+    "win_event_hook": ["test_win_event_hook.py"],
 }
 SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],

@@ -182,6 +182,9 @@ class InputListener(threading.Thread):
                 raise ctypes.WinError(ctypes.get_last_error())
             we_hook = user32.SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
                                              None, self._we_proc_c, 0, 0, WINEVENT_OUTOFCONTEXT)
+            if not we_hook:   # 截图键照样能用，但前台切换收不到、不会提前准备截图会话：留个痕迹（02-findings L3）
+                log.warning("SetWinEventHook 失败 err=%d：切到游戏时不会提前准备截图会话，第一张截图会慢一些",
+                            ctypes.get_last_error())
             self._refresh_raw()
             log.info("按键监听已启动")
         except Exception:
