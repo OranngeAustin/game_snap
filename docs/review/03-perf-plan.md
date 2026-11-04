@@ -95,5 +95,7 @@
 | P2 | https://github.com/OranngeAustin/game_snap/pull/3 | `lru_cache` 按状态缓存，返回拷贝 | 1.481 / 2.323 → 0.003 / 0.004 ms（-99.8%） | 常驻 +48 KB |
 | P3 | https://github.com/OranngeAustin/game_snap/pull/4 | 缓存画好的卡片（`lru_cache(maxsize=4)`），返回拷贝 | 同一句提示 9.06 / 7.07 / 8.24 → 0.004–0.005 ms（-99.9%）；全不命中时不变 | 实际场景无可测差别；最坏 +3 MB（glibc 堆碎片） |
 
+三个 PR 已于 2026-11-04 按用户要求合进 `claude/review-fixes`（还没合进 main）。
+
 P3 原计划给 `_font` 加缓存：耗时 -34%，但每个字号常驻约 +3.5 MB（4 个字号 +14 MB），不划算，所以改成缓存卡片。
 P1 试过 `getbuffer()[14:].tobytes()`，没有收益（CPython 3.12 的 `getvalue()` 本来就不复制），所以没采用。

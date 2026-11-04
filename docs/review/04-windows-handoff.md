@@ -3,14 +3,14 @@
 2026-11-04 写于 claude.ai 云端会话（Linux 容器）。三轮修复（高危、中危、低危）加上阶段 6 的三项性能优化，**全部只在 Linux 上跑过测试**：
 Windows 专属的测试、打包、托盘 / 浮层 / 按键 / 截图这些真实行为一样都没验证过。本文给在本机 Windows 上用 Claude Code 接手的人（或你自己）用。
 
-分支链（都没合并，main 仍是 58c59fb）：
+分支（2026-11-04 更新）：PR #2–#6 都已按你的要求、按顺序合并（low → medium → review-fixes），只剩 PR #1 没合并，main 仍是 58c59fb。
 
 ```
-main ← PR #1 ← claude/review-fixes ← PR #5 ← claude/medium-fixes ← PR #6 ← claude/low-fixes
-                （#2、#3、#4 已合进 claude/review-fixes）
+main ← PR #1（未合并）← claude/review-fixes ← claude/medium-fixes（PR #5，已合并）← claude/low-fixes（PR #6，已合并）
+                        （PR #2、#3、#4 也已合进 claude/review-fixes）
 ```
 
-`claude/low-fixes` 包含全部改动，**先在它上面验证**。都通过后建议按 #6 → #5 → #1 的顺序合并（见 00-SUMMARY.md、PROGRESS.md）。
+`claude/review-fixes` 包含全部改动，**在它上面验证**。都通过后再决定是否合并 #1 到 main（合并前按 CLAUDE.md 备份，见第 4 节第 4 步）。
 每条发现的详情在 [02-findings.md](02-findings.md)，每个决定的理由在 [PROGRESS.md](PROGRESS.md) 的 D1–D25。
 
 ## 1. 三轮修改总览（按模块）
@@ -90,7 +90,7 @@ main ← PR #1 ← claude/review-fixes ← PR #5 ← claude/medium-fixes ← PR 
 
 ## 3. Windows 风险清单
 
-「本轮」= 这三轮改到的代码；「原有」= 没改、但在 Windows 上值得验证的地方。行号以 `claude/low-fixes` @ 0bc5178 为准。
+「本轮」= 这三轮改到的代码；「原有」= 没改、但在 Windows 上值得验证的地方。行号以 `claude/review-fixes` 为准（代码和 `claude/low-fixes` @ 0bc5178 完全相同）。
 
 | 编号 | 风险 | 位置 | 说明 | 验证方法 |
 |---|---|---|---|---|
@@ -134,9 +134,9 @@ $proj = "D:\0_my_projects\anthropic_claude_code\game_snap"
 Set-Location $proj
 git status                      # 确认没有未提交的改动（not_games.py 是 skip-worktree，三轮都没改它，切分支不受影响）
 git fetch origin
-git switch claude/low-fixes     # 本地还没有这个分支时，git 会自动跟踪 origin/claude/low-fixes
-git pull origin claude/low-fixes
-git log --oneline -1            # 应是 0bc5178 或更新
+git switch claude/review-fixes  # 本地还没有这个分支时，git 会自动跟踪 origin/claude/review-fixes
+git pull origin claude/review-fixes
+git log --oneline -5            # 应能看到「合并 claude/medium-fixes 到 claude/review-fixes」
 
 # ---- 1. 环境（已有 gamesnap-build 就跳过 create） ----
 D:\anaconda3\Scripts\conda.exe env list

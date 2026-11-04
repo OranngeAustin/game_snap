@@ -114,7 +114,7 @@ gamesnap-build 跑 quick / all」。
 | M2 | ✅ | 新增 safe_name：修复前 18 项失败，修复后全过 | 见 D20 |
 | M3 | ✅ | 新增 toast_gdi：修复前 10 项失败，修复后全过 | 按 02-findings 建议，无取舍 |
 | M9 | ⏭ 跳过 | | 要升 Pillow 大版本，工作规则不允许，且要在 Windows 上重新打包验证 |
-| 建 PR | ✅ | quick 14 过 4 失败（连跑 3 次一样） | https://github.com/OranngeAustin/game_snap/pull/5（`claude/medium-fixes → claude/review-fixes`，不合并），见 D13、D21 |
+| 建 PR | ✅ | quick 14 过 4 失败（连跑 3 次一样） | https://github.com/OranngeAustin/game_snap/pull/5（`claude/medium-fixes → claude/review-fixes`；2026-11-04 已按用户要求合并，见 D26），见 D13、D21 |
 
 - **D12 合并 #2–#4**：RUNBOOK 工作规则禁止合并 PR，但用户这次明确要求把 #2–#4 合进 `claude/review-fixes`，以用户的话为准，
   其余 PR（#1 → main、本次新 PR）不合并。做法是在本地依次 `git merge --no-ff` 三个 perf 分支（无冲突），跑 quick
@@ -123,7 +123,7 @@ gamesnap-build 跑 quick / all」。
 - **D13 新 PR 的目标分支**：用户写的是「目标分支设为 claude/medium-fixes」，但那就是这个 PR 的源分支，自己合进自己不成立。
   按「从 claude/review-fixes 创建分支」理解为 `claude/medium-fixes → claude/review-fixes`，这样 PR 里只有中危修复的改动。
   用户中途补充「完成后把所有中级修复合并入 claude/medium-fixes，不合并入 main」：每项修复本来就直接提交在 `claude/medium-fixes` 上，
-  所以都已经在这个分支里；PR 只用来审阅，不合并，也没碰 main。
+  所以都已经在这个分支里；PR 当时只用来审阅、不合并，也没碰 main（之后按用户要求合并了，见 D26）。
 - **D14 「每次修复后运行全部测试」**：云端能跑的是 quick 里不依赖 Windows 的那些（not_games、config、toast_card、
   tray_icon、clipboard、listener_restart 打印 SKIP）和本次新增的测试；add_game、blocklist_remove、yuzu_naming、dualsense
   以及 all 的 5 个只能在 Windows 上跑（同 D2）。每次改动都对照这些跑不了的测试里**相关的断言**逐条核对过，写在各 commit 和 PR 里。
@@ -160,7 +160,7 @@ gamesnap-build 跑 quick / all」。
 - M1–M8 全部 ✅，每项一个 commit，先写测试、确认它在修复前失败，再修；另有一个 M4 测试的时序修正 commit。M9 ⏭（理由见上表）。
 - 新增 8 个测试，都登记进 run_tests.py 的 QUICK 和 tests/README.md，都能在云端 Linux 和 Windows 上跑。已有测试的断言一条没改。
 - 云端 quick：14 过 4 失败，失败的仍是 add_game、blocklist_remove、yuzu_naming、dualsense（缺 Windows 模块，同基线）。all 跑不了。
-- 没推送 main、没 force push、没删除分支；除了用户明确要求的 #2–#4，没合并任何 PR。
+- 没推送 main、没 force push、没删除分支；除了用户明确要求的 #2–#4，没合并任何 PR（#5、#6 之后也按用户要求合并了，见 D26）。
 
 ## 低危修复（2026-11-04，分支 `claude/low-fixes`）
 
@@ -206,6 +206,18 @@ gamesnap-build 跑 quick / all」。
   5 个 SLOW 测试逐个直接运行，全部在准备阶段失败、还没执行到项目代码：lifecycle_source、add_live 找不到
   `D:\anaconda3\envs\gamesnap-build\python.exe`；remove_live、multi_exit 找不到 `C:\Windows\System32\PING.EXE`；lifecycle_exe
   找不到 `dist\GameSnap\GameSnap.exe`。真正跑它们要在 Windows 上先重新打包（会换掉正在用的 GameSnap），留给用户。
-- 没推送 main、没 force push、没删除分支、没合并任何 PR。
-- PR：https://github.com/OranngeAustin/game_snap/pull/6（`claude/low-fixes → claude/medium-fixes`，不合并）。
+- 没推送 main、没 force push、没删除分支；当时没合并任何 PR（之后按用户要求合并了，见 D26）。
+- PR：https://github.com/OranngeAustin/game_snap/pull/6（`claude/low-fixes → claude/medium-fixes`，已按用户要求合并，见 D26）。
+
+## 合并与文档更新（2026-11-04）
+
+- **D26 合并**：用户先要求「把 medium 和 low fixes 都合并到 claude/review-fixes，不合并到 main」，再要求「按顺序合并」。做法都是本地
+  `merge --no-ff`、跑 quick（27 过 4 失败，同前）、再推送：
+  1. `claude/medium-fixes`、`claude/low-fixes` 合进 `claude/review-fixes`（ad764a7、47141d4），GitHub 把 PR #5 标为已合并；
+  2. 按顺序：`claude/low-fixes` 合进 `claude/medium-fixes`（2483072，PR #6 标为已合并），再把 `claude/medium-fixes` 合进
+     `claude/review-fixes`（ba69e14）。三条分支现在是一条链：low ⊂ medium ⊂ review-fixes，文件内容和 `claude/low-fixes` 相同。
+  「按顺序合并」没有包括 PR #1：用户此前明确说过不合并到 main，而且改动还没在 Windows 上验证，留给用户明确决定。
+- **D27 文档跟上现状**：用户问「对应文档都改了吧」。核对后发现 04（还让在 `claude/low-fixes` 上验证、按 #6 → #5 → #1 合并）、
+  00-SUMMARY（还停在阶段 7）、本文件（#5、#6 写着不合并）、CLAUDE.md（云端「能跑的只有 not_games」、改游戏名单还写 `cfg.set()`）、
+  README（缺「设置没保存上」「按键监听没启动起来」两个提示的说明）、02 / 03 / 01 的开头没跟上，在 `claude/review-fixes` 上一起改了。
 

@@ -4,6 +4,9 @@
 `tests/`（18 个脚本，约 2500 行），`docs/review/`。CLAUDE.md 里不进 git 的目录（`dist/`、`build/`、
 `backup/`、`tools/svcl/`）本来就不在仓库里，审查不涉及。
 
+> 本文描述的是审查基线。之后三轮修复加的结构（`App._sync_listener`、`Config.update`、单实例的 `_announce` 等）见
+> [04-windows-handoff.md](04-windows-handoff.md) 第 1 节。
+
 ## 1. 模块划分
 
 | 层 | 模块 | 行数 | 职责 | 运行在哪个线程 |
