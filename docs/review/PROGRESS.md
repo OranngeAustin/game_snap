@@ -110,7 +110,7 @@ gamesnap-build 跑 quick / all」。
 | M6 | ✅ | 新增 tray_refresh：修复前 3 项失败，修复后全过 | 见 D17 |
 | M1 | ✅ | 新增 capture_resize：修复前 3 项失败，修复后全过 | 两行改动，无取舍 |
 | M4 | ✅ | 新增 listener_start_fail：修复前 12 项失败，修复后全过 | 见 D18 |
-| M8 | ⏳ | | |
+| M8 | ✅ | 新增 instance_quit：修复前 11 项失败，修复后全过 | 见 D19 |
 | M2 | ⏳ | | |
 | M3 | ⏳ | | |
 
@@ -140,4 +140,9 @@ gamesnap-build 跑 quick / all」。
   否则那个慢线程之后挂上钩子，再建一个就是两个钩子、一次按键截两张。②「下次再试」只在下次需要监听时（检测到游戏、更换截图键、
   添加游戏）重建，不按轮询自动重试：一直失败时每 2 秒一条日志加一次提示太吵。③已有测试的 FakeListener 的 `wait_ready()` 都返回
   True，所以不会走到新加的 `join` / `is_alive`，不用改它们。
+- **D19 M8 的测法和一处补充**：命名互斥体 / 事件在测试里不能真建（会和正在运行的 GameSnap 抢同一个名字），所以测试把
+  `instance._k32` 换成按名字记对象的假实现，`ctypes.get_last_error` 也由它提供。补充了一处 02-findings 没写的：接管成功后马上建信号，
+  可能打开被换下实例还没释放的那个事件，上面还留着发给它的信号，不清掉的话本实例一开始等就会关掉自己，所以 `ResetEvent`。
+  `App.on_tray_ready` 是新加的可选回调，已有测试建 App 时不设它，行为不变；add_live / remove_live 的 inner 脚本是包一层再调真的
+  `_on_tray_ready`，回调照样会被调用。
 

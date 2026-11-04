@@ -157,6 +157,7 @@ class App:
         self._quitting = False
         self._tray_lock = threading.Lock()   # refresh_tray 会被多个线程调用，pystray 自己不加锁（M6）
         self._tray_state = "idle"            # 托盘上现在显示的图标
+        self.on_tray_ready = None            # 托盘就绪后调用（main 在这时才开始等单实例的退出信号，M8）
 
         self.toast = Toast()
         self.worker = CaptureWorker(self)
@@ -178,6 +179,8 @@ class App:
         self.refresh_tray()
         self.watcher.start()
         self.dualsense.start()
+        if self.on_tray_ready is not None:
+            self.on_tray_ready()
 
     # ---------- 状态 ----------
     def should_capture(self, pid: int) -> bool:
@@ -490,12 +493,18 @@ class App:
             return
         self._quitting = True
         log.info("退出")
-        self.watcher.stop()
-        self._stop_listener()
-        self.worker.post("quit")
-        self.worker.join(timeout=5)
-        self.toast.stop()
-        icon.stop()
+        try:
+            self.watcher.stop()
+            self._stop_listener()
+            self.worker.post("quit")
+            if self.worker.ident is not None:   # 还没启动的线程 join 会抛 RuntimeError
+                self.worker.join(timeout=5)
+            self.toast.stop()
+        except Exception:
+            log.exception("退出时出错")
+        finally:
+            # 前面哪一步出错都要让托盘退出：_quitting 已置位，否则托盘留着、「退出」也点不动（M8）
+            icon.stop()
 
     def _menu(self) -> pystray.Menu:
         I = pystray.MenuItem
@@ -638,7 +647,9 @@ def main() -> None:
     log.info("管理员权限：%s", inst.elevated)
     try:
         app = App(Config(Path(args.config)) if args.config else Config())
-        inst.serve(on_quit=lambda: app._auto_quit("由新启动的 GameSnap（管理员权限）接管"))
+        # 退出信号在 Instance() 里就建好了；托盘进入消息循环、能正常退出之后才开始等它（02-findings M8）
+        app.on_tray_ready = lambda: inst.serve(
+            on_quit=lambda: app._auto_quit("由新启动的 GameSnap（管理员权限）接管"))
         app.run()
     except Exception:
         log.exception("GameSnap 异常退出")

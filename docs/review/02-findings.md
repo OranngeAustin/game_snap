@@ -138,6 +138,11 @@
 - **修复建议**：拿到互斥体后立即创建 Quit 事件和 Elevated 标记，等待线程在 `_on_tray_ready` 里再启动；`take_over` 对
   `OpenEventW` 重试几秒；`_quit` 用 try/finally 保证调用 `icon.stop`。
 - **把握**：机制为高；窗口只有启动时的几百毫秒，发生概率低。
+- **状态**：✅ 已修复（`claude/medium-fixes`），三处都按建议做了：①`Instance` 拿到互斥体（含接管成功后）立即 `_announce()` 建 Quit 事件和
+  Elevated 标记，`serve()` 只启动等待线程；接管成功后若打开的是被换下实例还没释放的那个事件，先 `ResetEvent` 清掉残留信号。
+  ②`take_over` 对 `OpenEventW` 重试 3 秒。③`main` 通过 `App.on_tray_ready` 在托盘就绪后才调 `serve()`；`_quit` 用 try/except/finally，
+  没启动的截图线程不 join，出错也调用 `icon.stop()`。新测试 `tests/test_instance_quit.py`（假 kernel32，不建真的命名对象）：修复前 11 项失败，
+  修复后全过。真实的接管流程（两个快捷方式先后启动）仍要在 Windows 上试一次。
 
 ## 低
 

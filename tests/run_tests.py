@@ -37,6 +37,7 @@ QUICK = {
     "listener_restart": ["test_listener_restart.py", "{run}"],
     "listener_sync": ["test_listener_sync.py", "{run}"],
     "listener_start_fail": ["test_listener_start_fail.py", "{run}"],
+    "instance_quit": ["test_instance_quit.py", "{run}"],
 }
 SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],
