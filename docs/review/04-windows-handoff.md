@@ -1,7 +1,9 @@
 # 04 Windows 交接：在本机验证三轮修复
 
-2026-11-04 写于 claude.ai 云端会话（Linux 容器）。三轮修复（高危、中危、低危）加上阶段 6 的三项性能优化，**全部只在 Linux 上跑过测试**：
-Windows 专属的测试、打包、托盘 / 浮层 / 按键 / 截图这些真实行为一样都没验证过。本文给在本机 Windows 上用 Claude Code 接手的人（或你自己）用。
+2026-11-04 写于 claude.ai 云端会话（Linux 容器），同日按本机 worktree 的做法改过。三轮修复（高危、中危、低危）加上阶段 6 的三项性能优化，目前 Windows 上**只跑过 quick**（2026-11-04，commit 431d301，31 个全部通过）：
+打包、all、托盘 / 浮层 / 按键 / 截图这些真实行为还没验证。本文给在本机 Windows 上用 Claude Code 接手的人（或你自己）用。
+
+**验证全程在独立的 git worktree 里做，不影响正在用的 GameSnap**：不在主目录切分支、不在主目录打包（所有快捷方式都指向主目录的 `dist\GameSnap\GameSnap.exe`，在那里打包就是换掉正在用的版本）。
 
 分支（2026-11-04 更新）：PR #2–#6 都已按你的要求、按顺序合并（low → medium → review-fixes），只剩 PR #1 没合并，main 仍是 58c59fb。
 
@@ -10,7 +12,7 @@ main ← PR #1（未合并）← claude/review-fixes ← claude/medium-fixes（P
                         （PR #2、#3、#4 也已合进 claude/review-fixes）
 ```
 
-`claude/review-fixes` 包含全部改动，**在它上面验证**。都通过后再决定是否合并 #1 到 main（合并前按 CLAUDE.md 备份，见第 4 节第 4 步）。
+`claude/review-fixes` 包含全部改动，**在它上面验证**。都通过后再决定是否合并 #1 到 main（合并前按 CLAUDE.md 备份，见第 4 节末尾「都通过后再更新正式版」）。
 每条发现的详情在 [02-findings.md](02-findings.md)，每个决定的理由在 [PROGRESS.md](PROGRESS.md) 的 D1–D25。
 
 ## 1. 三轮修改总览（按模块）
@@ -72,7 +74,7 @@ main ← PR #1（未合并）← claude/review-fixes ← claude/medium-fixes（P
 | listener_restart | 打印 SKIP | 要真的挂键盘钩子、建窗口 |
 | all 的 lifecycle_source、add_live、remove_live、lifecycle_exe、multi_exit | 准备阶段就失败，没执行到项目代码 | 找不到 `D:\anaconda3\envs\gamesnap-build\python.exe`、`C:\Windows\System32\PING.EXE`、`dist\GameSnap\GameSnap.exe`；`run_tests.py all` 本身一开头 import watcher 就失败 |
 | `tests\bench_startup.py`、`build.py` 打包 | 没跑 | 要 PyInstaller 和打包版 |
-| 26 个新测试在 Windows 上的表现 | **从没在 Windows 上跑过** | 它们在 Linux 上用的是 MagicMock 桩。几个测试在进程内替换了 Windows 的东西，Windows 上第一次跑时可能因为桩的写法和真模块不一致而失败，要先分清是测试的问题还是代码的问题：instance_quit 全局替换了 `ctypes.get_last_error` / `set_last_error`；toast_gdi 替换了 `toast.user32` / `gdi32` 和 `ctypes.memmove`；win_event_hook、key_name 替换了 `hotkey.user32`；listener_start_fail 用真的 InputListener、只把 `create_window` 换成报错；held_key 在 Windows 上用真的 `QPC_FREQ` |
+| 26 个新测试在 Windows 上的表现 | 云端验证不了；2026-11-04 本机 quick 已全部通过 | 它们在 Linux 上用的是 MagicMock 桩。几个测试在 Windows 上也替换了部分 Win32 函数，以后失败时要先分清是测试的问题还是代码的问题：instance_quit 全局替换了 `ctypes.get_last_error` / `set_last_error`；toast_gdi 替换了 `toast.user32` / `gdi32` 和 `ctypes.memmove`；win_event_hook、key_name 替换了 `hotkey.user32`；listener_start_fail 用真的 InputListener、只把 `create_window` 换成报错；held_key 在 Windows 上用真的 `QPC_FREQ` |
 
 **真实行为（只能实机看）**
 
@@ -86,7 +88,7 @@ main ← PR #1（未合并）← claude/review-fixes ← claude/medium-fixes（P
 - 中文路径、OneDrive 迁移过的「图片」文件夹。
 - 打包版：PyInstaller 有没有漏模块（这几轮没加新模块，只加了 `functools`、`itertools`、`math` 等标准库）。
 
-**.bat 启动脚本**：仓库里没有 .bat / .cmd / .ps1。启动靠桌面和开始菜单的 6 个 .lnk 快捷方式（CLAUDE.md「快捷方式」），参数 `--launch`、`--no-elevate` 这几轮没改，但要在重新打包后各点一次确认（见手动测试 M-25）。
+**.bat 启动脚本**：仓库里没有 .bat / .cmd / .ps1。启动靠桌面和开始菜单的 6 个 .lnk 快捷方式（CLAUDE.md「快捷方式」），参数 `--launch`、`--no-elevate` 这几轮没改，但要在合并到 main、主目录重新打包后各点一次确认（见手动测试 M-25）。
 
 ## 3. Windows 风险清单
 
@@ -104,7 +106,7 @@ main ← PR #1（未合并）← claude/review-fixes ← claude/medium-fixes（P
 | R-08 | 文件被占用时保存配置 | `config.py:163-182`（`save`）、`main.py:142`（`on_save_error`） | 杀毒软件、同步盘短暂占用时 `os.replace` 抛 PermissionError；现在重试 5 次（约 1 秒），仍失败只提示 | 手动 M-15（用 PowerShell 独占打开 config.json） |
 | R-09 | `os.replace` 原子写入 | `config.py:174`、`output.py:74`（`Path.replace`） | Windows 上是 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`：同一个卷上原子；目标被别的进程不带 FILE_SHARE_DELETE 打开时失败。`.tmp` / `.png.part` 和目标总在同一文件夹，不会跨卷 | M-15；再把 `save_dir` 放到 OneDrive 同步的文件夹里连拍 10 张，确认没有残留 `.png.part`、没有「截图失败」 |
 | R-10 | 删 `.png.part` 时它也被占用 | `output.py:75-77`（本轮 L11） | `unlink(missing_ok=True)` 只忽略「不存在」，被占用会抛 PermissionError，盖掉原来的异常（finish_shot 照样提示「截图失败」，日志里的异常换成了删除失败的那个） | 只能人为制造：截图过程中用 PowerShell 独占打开 `.png.part`，难度大，可以只看代码确认 |
-| R-11 | **原有：第二个实例启动时删 crash.log** | `main.py:591-592`，在 `main.py:642` 的单实例检查之前执行 | crash.log 超过 1 MB 时，新启动的实例会先 `unlink` 它；旧实例正开着这个文件（faulthandler），Windows 上删不掉，抛 PermissionError，新实例还没检查单实例就崩了（打包版没有控制台，看不到报错）。影响接管（M8）和「已经在运行了」提示 | 退出 GameSnap，把 `crash.log` 补到 1 MB 以上（先备份），启动一个实例，再点另一个快捷方式：看第二个是否无声消失、`gamesnap.log` 里有没有它的记录。见「已知问题」 |
+| R-11 | **原有：第二个实例启动时删 crash.log** | `main.py:591-592`，在 `main.py:642` 的单实例检查之前执行 | crash.log 超过 1 MB 时，新启动的实例会先 `unlink` 它；旧实例正开着这个文件（faulthandler），Windows 上删不掉，抛 PermissionError，新实例还没检查单实例就崩了（打包版没有控制台，看不到报错）。影响接管（M8）和「已经在运行了」提示 | 手动 M-23（用测试 APPDATA，不碰真实的 crash.log）：看第二个实例是否无声消失、`gamesnap.log` 里有没有它的记录。见「已知问题」 |
 | R-12 | **原有：两个进程同时写日志、日志轮转** | `main.py:580`（`RotatingFileHandler`，1 MB 轮转） | 接管或「已在运行」时两个进程短暂同开 gamesnap.log；轮转要改名，另一个进程开着时会失败，这段时间的日志会丢 | 日志接近 1 MB 时做一次接管（M-10），看日志是否连续 |
 | R-13 | 多进程 / 子进程 | `main.py:567-573`（`relaunch_as_admin`，ShellExecute runas）、`main.py:611`（`launch`）、`dualsense.py:145`（svcl，CREATE_NO_WINDOW）、`main.py:97`（Saver 是线程池，不是进程） | 项目没用 multiprocessing，所以打包版不需要 `freeze_support`。提权是重新启动自己，参数用 `list2cmdline` 拼接 | 手动 M-25（从带「以管理员身份运行」的快捷方式启动，日志第一行「管理员权限：True」，任务管理器里只有一个 GameSnap） |
 | R-14 | 单实例接管（本轮 M8） | `instance.py:88`（`_announce`）、`instance.py:113-125`（`take_over` 重试）、`instance.py:134`（`serve`）、`main.py:187`、`main.py:658` | 命名对象在 `Local\` 下、用「所有人、低完整性」的安全描述符（L19）；接管靠 Quit 事件 + 等互斥体 | 手动 M-10；quick 的 instance_quit 只用了假 kernel32 |
@@ -128,25 +130,27 @@ main ← PR #1（未合并）← claude/review-fixes ← claude/medium-fixes（P
 **必须用 `D:\anaconda3\envs\gamesnap-build` 这个 conda 环境**：test_add_live.py:25、test_lifecycle.py:19、test_remove_live.py:21
 把这个解释器路径写死了，另建的 venv 跑不了这 3 个测试；run_tests.py 也按这个环境检查。
 
+下面的 `$proj` 是验证用的 worktree，所有命令都在它里面跑。**GameSnap 的单实例互斥是全机共用的**：测试版和正式版不能同时开，测试前先从托盘退出正式版，否则测试实例会自己退出，或者把正式版顶掉。
+
 ```powershell
-# ---- 0. 取代码 ----
-$proj = "D:\0_my_projects\anthropic_claude_code\game_snap"
+# ---- 0. 取代码（在 worktree 里，主目录不动） ----
+$py = "D:\anaconda3\envs\gamesnap-build\python.exe"
+$main = "D:\0_my_projects\anthropic_claude_code\game_snap"
+$proj = "$main\.claude\worktrees\github-review-local-test-1f6fb7"   # 换成你的 worktree
 Set-Location $proj
-git status                      # 确认没有未提交的改动（not_games.py 是 skip-worktree，三轮都没改它，切分支不受影响）
+git status                      # 确认没有未提交的改动
 git fetch origin
-git switch claude/review-fixes  # 本地还没有这个分支时，git 会自动跟踪 origin/claude/review-fixes
-git pull origin claude/review-fixes
+git merge --ff-only origin/claude/review-fixes
 git log --oneline -5            # 应能看到「合并 claude/medium-fixes 到 claude/review-fixes」
 
-# ---- 1. 环境（已有 gamesnap-build 就跳过 create） ----
-D:\anaconda3\Scripts\conda.exe env list
-D:\anaconda3\Scripts\conda.exe create -y -p D:\anaconda3\envs\gamesnap-build python=3.12
-$py = "D:\anaconda3\envs\gamesnap-build\python.exe"
-& $py --version                 # 3.12.x
+# ---- 1. 补齐 git 里没有的两样（只从主目录读，已补过就跳过） ----
+# not_games.py：仓库里是精简版，blocklist_remove 要完整名单；先 skip-worktree，完整名单不能提交
+# tools\svcl：不进 git，dualsense 测试和打包都要用
+git update-index --skip-worktree not_games.py
+& $py -c "import shutil, sys; m, w = sys.argv[1:]; shutil.copyfile(m + r'\not_games.py', w + r'\not_games.py'); shutil.copytree(m + r'\tools\svcl', w + r'\tools\svcl', dirs_exist_ok=True)" $main $proj
 
-# ---- 2. 依赖 ----
-& $py -m pip install --upgrade pip
-& $py -m pip install -r requirements.txt
+# ---- 2. 环境（gamesnap-build 和主目录共用，已有就不要重装、升级，只检查） ----
+& $py --version                 # 3.12.x
 & $py -m pip show pillow        # 记下版本（02-findings M9：10.1–12.3 有已知漏洞）
 & $py -m pip check
 
@@ -154,29 +158,22 @@ $py = "D:\anaconda3\envs\gamesnap-build\python.exe"
 Get-Process GameSnap -ErrorAction SilentlyContinue      # 有输出就先从托盘退出
 & $py -X utf8 tests\run_tests.py --out build\test_runs\handoff_quick
 Get-Content -Encoding UTF8 build\test_runs\handoff_quick\summary.txt
-# 预期：31 passed。DualSense 插着但不是四声道时 dualsense 会失败（绊线拦下了一次改设置，不是程序坏了，见 tests\README.md）
+# 预期：31 passed。没做第 1 步时 blocklist_remove、dualsense 会失败。DualSense 插着但不是四声道时 dualsense 也会失败（绊线拦下了一次改设置，不是程序坏了，见 tests\README.md）
 
-# ---- 4. 打包前备份当前 dist（CLAUDE.md：大改前备份，并在 README「旧版备份」记一笔） ----
-Get-Process GameSnap -ErrorAction SilentlyContinue      # 必须没在运行，否则打包会失败或换掉正在用的版本
-$bk = "backup\v5_review_fixes"
-New-Item -ItemType Directory -Force $bk | Out-Null
-Copy-Item -Recurse dist\GameSnap "$bk\GameSnap"
-git archive --format=zip -o "$bk\source_main.zip" origin/main   # 改动前的源码
-
-# ---- 5. 打包 ----
+# ---- 4. 打包（只写 worktree 自己的 dist，快捷方式和正式版不受影响） ----
 & $py build.py
 Test-Path dist\GameSnap\GameSnap.exe                    # True
 
-# ---- 6. all（约 3 分钟，会真的启动 GameSnap） ----
+# ---- 5. all（约 3 分钟，会真的启动 GameSnap） ----
 & $py -X utf8 tests\run_tests.py all --out build\test_runs\handoff_all
 Get-Content -Encoding UTF8 build\test_runs\handoff_all\summary.txt
 # 预期：36 passed（31 个 quick + 5 个 SLOW）
 ```
 
-**从 Claude 桌面应用里让 Claude 跑 all** 时，要在 MSIX 容器外启动（否则 %APPDATA% 会被重定向），用 tests\README.md 里的写法：
+**从 Claude 桌面应用里让 Claude 跑 all** 时，要在 MSIX 容器外启动（否则 %APPDATA% 会被重定向），用 tests\README.md 里的写法（`$proj` 同样是 worktree）：
 
 ```powershell
-$proj = "D:\0_my_projects\anthropic_claude_code\game_snap"
+$proj = "D:\0_my_projects\anthropic_claude_code\game_snap\.claude\worktrees\github-review-local-test-1f6fb7"
 $out = "$proj\build\test_runs\handoff_all"
 $cmd = "`"D:\anaconda3\envs\gamesnap-build\python.exe`" -X utf8 `"$proj\tests\run_tests.py`" all --out `"$out`""
 $p = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=$cmd; CurrentDirectory=$proj}
@@ -190,32 +187,56 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 git worktree add ..\game_snap_main origin/main
 Copy-Item tests\test_listener_restart.py ..\game_snap_main\tests\
 & $py -X utf8 ..\game_snap_main\tests\test_listener_restart.py build\test_runs\h1_before
-git worktree remove ..\game_snap_main
+git worktree remove --force ..\game_snap_main   # 复制进去的测试是未跟踪文件，不加 --force 删不掉
 ```
 
 **可选：基准**（只测量，不判对错）：`& $py -X utf8 tests\bench_logic.py 5`、`& $py -X utf8 tests\bench_startup.py build\test_runs\bench_startup`。
 
 某个测试失败时，看 `build\test_runs\<out>\<测试名>.txt`。如果是新加的测试，先判断是**测试的桩在 Windows 上不适用**（见第 2 节）还是**代码真的有问题**，不要为了通过去改已有测试的断言。
 
+### 都通过后再更新正式版
+
+自动测试和手动测试都通过、决定合并 PR #1 之后才做这一段，这时才会换掉正在用的版本。下面的命令在**主目录**跑：
+
+```powershell
+Set-Location "D:\0_my_projects\anthropic_claude_code\game_snap"
+Get-Process GameSnap -ErrorAction SilentlyContinue      # 必须没在运行，否则打包会失败或换掉正在用的版本
+
+# 备份当前 dist 和源码（CLAUDE.md：大改前备份，并在 README「旧版备份」记一笔）
+$bk = "backup\v5_review_fixes"
+New-Item -ItemType Directory -Force $bk | Out-Null
+Copy-Item -Recurse dist\GameSnap "$bk\GameSnap"
+git archive --format=zip -o "$bk\source_main.zip" HEAD  # 改动前的源码
+
+# 在 GitHub 上合并 PR #1 之后：
+git pull --ff-only origin main
+& $py build.py
+```
+
+然后做手动测试 M-25，确认三个快捷方式。
+
 ## 5. 手动测试清单
 
 **准备**
 
-1. 从托盘退出 GameSnap。按 CLAUDE.md 在容器外把真实配置备份到 `backup\before_handoff\config.json`。
-2. 涉及配置的测试（M-01–M-03、M-15）用测试目录，不碰真实的 `%APPDATA%\GameSnap`：
+1. 从托盘退出正式版 GameSnap（单实例互斥，见第 4 节）。下面都在 worktree 里运行，`$py`、`$proj` 同第 4 节。
+2. 涉及配置的测试用测试目录，不碰真实的 `%APPDATA%\GameSnap`：
 
    ```powershell
-   $env:APPDATA = "D:\0_my_projects\anthropic_claude_code\game_snap\build\test_runs\manual\appdata"
+   Set-Location $proj
+   $env:APPDATA = "$proj\build\test_runs\manual\appdata"
    New-Item -ItemType Directory -Force "$env:APPDATA\GameSnap" | Out-Null
-   # 测试配置：把记事本当游戏，截图键用默认的 `
-   '{"games": {"Notepad.exe": "记事本测试"}, "launchers": [], "save_dir": "D:\\0_my_projects\\anthropic_claude_code\\game_snap\\build\\test_runs\\manual\\shots", "dualsense_quad": false}' |
+   # 测试配置：把记事本当游戏，截图键用默认的 `（save_dir 换成你的 worktree 下的路径）
+   '{"games": {"Notepad.exe": "记事本测试"}, "launchers": [], "save_dir": "D:\\0_my_projects\\anthropic_claude_code\\game_snap\\.claude\\worktrees\\github-review-local-test-1f6fb7\\build\\test_runs\\manual\\shots", "dualsense_quad": false}' |
      Set-Content -Encoding utf8 "$env:APPDATA\GameSnap\config.json"
    & $py main.py --no-elevate --console
    ```
 
    这个 PowerShell 窗口里的 `$env:APPDATA` 只影响从它启动的进程，关掉窗口就恢复。没开记事本时，GameSnap 60 秒后会按规则自动退出
    （`wait_no_launcher_sec`），测完一项重新运行最后一行即可。
-3. 涉及真实游戏的测试（M-06、M-09、M-10）用打包版和真实配置。
+3. 涉及真实游戏的测试（M-06、M-09）用 worktree 的打包版和测试配置：把要测的游戏加进测试配置的 `games`，运行 `& "$proj\dist\GameSnap\GameSnap.exe" --no-elevate --config "$env:APPDATA\GameSnap\config.json"`。
+   游戏以管理员身份运行时去掉 `--no-elevate`。UAC 提权后的进程一般不继承窗口里改过的 `$env:APPDATA`，所以一定要带 `--config`；这时日志和 crash.log 会追加到真实的 `%APPDATA%\GameSnap`，配置和截图仍走测试配置。
+4. 不要点桌面或开始菜单的快捷方式来验证：它们指向主目录的正式版，测不到这批修改。M-25 留到合并后再做。
 
 | 编号 | 对应 | 操作 | 预期结果 |
 |---|---|---|---|
@@ -228,7 +249,7 @@ git worktree remove ..\game_snap_main
 | M-07 | L4 | 托盘「更换截图键…」，分别按 Insert、→、Home | 提示和托盘菜单显示的是这几个键自己的名字（如「Insert」「Right」「Home」，具体文字取决于键盘布局），不是「Num 0」「Num 6」「Num 7」。测完改回 ` |
 | M-08 | L2 | 托盘「更换截图键…」，在第 10 秒左右按一个键 | 只出现一条提示（「截图键已设为 …」或「已取消更换截图键」二选一），config.json 和提示一致 |
 | M-09 | M1、L5、L9 | 游戏里截一张；把游戏从窗口切到全屏（或改分辨率）；再截一张 | 第二张尺寸是新分辨率；日志有「画面尺寸变为 …，重建帧池」；两张的后端都是 `wgc`，没有「换下这个会话」 |
-| M-10 | M8 | 先点「云·原神 + 截图」（`--no-elevate`），1 秒内再点「米哈游启动器 + 截图」（管理员）并同意 UAC | 只剩一个托盘图标；新实例日志有「正在运行的 GameSnap 没有管理员权限 … 由本实例接管」和「管理员权限：True」；旧实例日志有「自动退出：由新启动的 GameSnap（管理员权限）接管」；托盘「退出」能退出 |
+| M-10 | M8 | 先运行 `& "$proj\dist\GameSnap\GameSnap.exe" --no-elevate --config "$env:APPDATA\GameSnap\config.json"`，1 秒内再去掉 `--no-elevate` 运行一次并同意 UAC | 只剩一个托盘图标；新实例日志（提权后在真实的 `%APPDATA%\GameSnap\gamesnap.log`）有「正在运行的 GameSnap 没有管理员权限 … 由本实例接管」和「管理员权限：True」；旧实例日志（测试 APPDATA）有「自动退出：由新启动的 GameSnap（管理员权限）接管」；托盘「退出」能退出 |
 | M-11 | M6、Q1 | 连按截图键 10 次；再在游戏退出的同时打开托盘菜单 | 托盘图标一直正确（工作中是绿色，退出后变灰），提示文字的张数对；菜单不失效、不崩（Q1 观察结果记下来） |
 | M-12 | M3 | 无法手动触发（要耗尽 GDI 资源） | 只靠 quick 的 toast_gdi；记「⏭」 |
 | M-13 | M2 | 测试配置里把记事本的显示名改成 `CON`，截一张；再改成 `..`，截一张 | 截图分别在 `shots\_CON\` 和 `shots\未知游戏\`，不在 `shots` 的上一级 |
@@ -241,9 +262,9 @@ git worktree remove ..\game_snap_main
 | M-20 | L16 | 不开游戏，托盘「添加游戏…」，等超时 | 超时后不会立刻退出，而是再等 `wait_no_launcher_sec` |
 | M-21 | 高 DPI（R-17） | 系统缩放设 150%，截一张；有两块显示器时把游戏放到缩放不同的那块再截 | 浮层在游戏所在显示器右上角、文字清晰、不进截图；截图是物理分辨率 |
 | M-22 | R-01、R-02 | 测试配置 `save_dir` 设成 `D:\测试 截图\一层\二层`，截图 | 能保存，文件夹和文件名中文正常 |
-| M-23 | R-11 | 退出 GameSnap，备份并把 `crash.log` 补到 1 MB 以上，启动一个实例，再点另一个快捷方式 | **已知风险**：第二个实例可能无声消失。记下实际表现，决定是否要修（见第 6 节） |
+| M-23 | R-11 | 退出 GameSnap，把测试 APPDATA 里的 `crash.log` 补到 1 MB 以上，在同一窗口把 worktree 的打包版运行两次（都带 `--no-elevate`，第二次等托盘图标出现后） | **已知风险**：第二个实例可能无声消失。记下实际表现，决定是否要修（见第 6 节） |
 | M-24 | R-04 | 截图后读 PNG 元数据（见 R-04 的命令） | `GameSnap` 一项里有 `game=<中文游戏名>`、`backend=wgc` |
-| M-25 | R-13、快捷方式 | 重新打包后，桌面 3 个快捷方式各点一次（游戏启动后再退出） | 带管理员的弹 UAC、日志「管理员权限：True」；`--no-elevate` 的不弹；游戏和启动器都关掉后按规则自动退出 |
+| M-25 | R-13、快捷方式 | **合并到 main、主目录重新打包后才做**（快捷方式指向主目录的版本）：桌面 3 个快捷方式各点一次（游戏启动后再退出） | 带管理员的弹 UAC、日志「管理员权限：True」；`--no-elevate` 的不弹；游戏和启动器都关掉后按规则自动退出 |
 | M-26 | 资源占用 | 等待进游戏时和游戏中，看任务管理器的内存 | 和 README「资源占用」一节的数字相近，没有明显上涨 |
 
 ## 6. 已知问题
@@ -278,7 +299,7 @@ git worktree remove ..\game_snap_main
 - R-12：两个进程同时写 gamesnap.log 时，轮转可能失败、丢日志。
 - R-10：`.png.part` 也被占用时，删除失败的异常会盖掉原来的异常（只影响日志内容）。
 
-**测试本身的限制**：26 个新测试从没在 Windows 上跑过（第 2 节）；instance_quit、toast_gdi 等用假的 Win32 函数，只验证逻辑，不验证真实 API 的行为。
+**测试本身的限制**：instance_quit、toast_gdi 等用假的 Win32 函数，只验证逻辑，不验证真实 API 的行为，quick 通过不能代替手动测试。
 
 ## 7. 结果记录模板
 
