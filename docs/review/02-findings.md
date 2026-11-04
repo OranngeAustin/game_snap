@@ -52,6 +52,10 @@
 - **后果**：抛异常 → 会话和设备被换下（按设计不关闭，多占一套）→ 这一张截图走重建流程或 GDI，重建帧池的逻辑形同虚设。
 - **修复建议**：`close()` 之前先存下新尺寸再用。改动无副作用。
 - **把握**：中（取决于 pywinrt / WinRT 关闭后读属性是否报错）。
+- **状态**：✅ 已修复（`claude/medium-fixes`）。`close()` 之前把 `content_size` 存进 `new_size`，比较、记录、`recreate` 都用它。
+  `content_size` 是 SizeInt32 值类型，存下的副本不依赖帧对象。新测试 `tests/test_capture_resize.py` 用关闭后读尺寸就报错的假帧
+  走一遍：修复前 3 项失败（抛 RO_E_CLOSED、没重建帧池、手里没帧），修复后全过。真实 WinRT 关闭后是否报错仍要在 Windows 上
+  改分辨率验证（改法本身不管报不报错都对）。
 
 ### M2 `_safe_name` 不处理 `.`、`..`、控制字符、Windows 保留名和超长名字
 - **位置**：`output.py:37-38`（`_safe_name`），名字来源 `main.py:75-77`（yuzu 窗口标题，即 ROM 元数据）、`main.py:84-85`

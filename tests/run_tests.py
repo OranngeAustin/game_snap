@@ -32,6 +32,7 @@ QUICK = {
     "blocklist_remove": ["test_blocklist_remove.py", "{run}"],
     "yuzu_naming": ["test_yuzu_naming.py", "{run}"],
     "clipboard": ["test_clipboard.py", "{run}"],
+    "capture_resize": ["test_capture_resize.py"],
     "dualsense": ["test_dualsense.py"],
     "listener_restart": ["test_listener_restart.py", "{run}"],
     "listener_sync": ["test_listener_sync.py", "{run}"],

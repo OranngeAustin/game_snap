@@ -108,7 +108,7 @@ gamesnap-build 跑 quick / all」。
 | M7 | ✅ | 新增 listener_sync：修复前 6 项失败，修复后全过 | 见 D15 |
 | M5 | ✅ | 新增 config_values：修复前 93 项失败并抛异常，修复后全过 | 见 D16 |
 | M6 | ✅ | 新增 tray_refresh：修复前 3 项失败，修复后全过 | 见 D17 |
-| M1 | ⏳ | | |
+| M1 | ✅ | 新增 capture_resize：修复前 3 项失败，修复后全过 | 两行改动，无取舍 |
 | M4 | ⏳ | | |
 | M8 | ⏳ | | |
 | M2 | ⏳ | | |
