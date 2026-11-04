@@ -91,6 +91,10 @@ def copy_to_clipboard(img: Image.Image) -> bool:
             win32clipboard.EmptyClipboard()
             win32clipboard.SetClipboardData(win32clipboard.CF_DIB, dib)
             return True
+        except Exception:
+            # 以前冒到 finish_shot：PNG 已经存好，却提示「截图失败」、计数不加（02-findings L10）
+            log.exception("写剪贴板失败（截图已保存）")
+            return False
         finally:
             win32clipboard.CloseClipboard()
     log.warning("剪贴板一直被占用，未能复制截图")

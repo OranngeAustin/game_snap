@@ -162,3 +162,17 @@ gamesnap-build 跑 quick / all」。
 - 云端 quick：14 过 4 失败，失败的仍是 add_game、blocklist_remove、yuzu_naming、dualsense（缺 Windows 模块，同基线）。all 跑不了。
 - 没推送 main、没 force push、没删除分支；除了用户明确要求的 #2–#4，没合并任何 PR。
 
+## 低危修复（2026-11-04，分支 `claude/low-fixes`）
+
+用户新目标：从 `claude/medium-fixes` 建 `claude/low-fixes`，修 02-findings 的低危问题 L1–L18，每个问题一个 commit、能写测试的先写测试；
+误报、纯风格、修复风险过大的标「⏭ 跳过」。PR 目标分支 `claude/medium-fixes`。只遵守 RUNBOOK 的「工作规则」。
+
+| 编号 | 状态 | 说明 |
+|---|---|---|
+| L10 | ✅ | 新增 clipboard_error：修复前 6 项失败，修复后全过 |
+<!-- 低危进度表末尾 -->
+
+- **D22 测试范围**：同 D14，「每次修复后运行全部测试」在云端只能跑 quick 里不依赖 Windows 的那些；all 的 5 个和 4 个 Windows quick
+  测试跑不了，改动相关的断言逐条核对。每项的流程固定为：新测试先在旧代码上跑、确认失败 → 修 → 新测试全过 → quick 失败的只有那 4 个
+  环境原因 → 提交推送。
+
