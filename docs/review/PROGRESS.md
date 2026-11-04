@@ -114,7 +114,7 @@ gamesnap-build 跑 quick / all」。
 | M2 | ✅ | 新增 safe_name：修复前 18 项失败，修复后全过 | 见 D20 |
 | M3 | ✅ | 新增 toast_gdi：修复前 10 项失败，修复后全过 | 按 02-findings 建议，无取舍 |
 | M9 | ⏭ 跳过 | | 要升 Pillow 大版本，工作规则不允许，且要在 Windows 上重新打包验证 |
-| 建 PR | ✅ | quick 14 过 4 失败（连跑 3 次一样） | `claude/medium-fixes → claude/review-fixes`，见 D13、D21 |
+| 建 PR | ✅ | quick 14 过 4 失败（连跑 3 次一样） | https://github.com/OranngeAustin/game_snap/pull/5（`claude/medium-fixes → claude/review-fixes`，不合并），见 D13、D21 |
 
 - **D12 合并 #2–#4**：RUNBOOK 工作规则禁止合并 PR，但用户这次明确要求把 #2–#4 合进 `claude/review-fixes`，以用户的话为准，
   其余 PR（#1 → main、本次新 PR）不合并。做法是在本地依次 `git merge --no-ff` 三个 perf 分支（无冲突），跑 quick
