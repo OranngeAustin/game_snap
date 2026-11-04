@@ -76,6 +76,9 @@
   `ctypes.memmove(bits, …)` 访问违例，进程在游戏中途消失；`GetDC`→`ReleaseDC` 之间抛异常时屏幕 DC 泄漏。
 - **修复建议**：先算 `data`；检查 `self._bitmap and bits.value`，失败就 `_free_bitmap()`、记日志、返回；`ReleaseDC` 放进 finally。
 - **把握**：高（代码事实）；触发概率低。
+- **状态**：✅ 已修复（`claude/medium-fixes`），按建议做：先算 `data`；`GetDC` 失败直接返回；`CreateCompatibleDC` 失败就不建位图；
+  `memdc`、`bitmap`、`bits` 有一个是 NULL 就 `_free_bitmap()`、记日志、这次不显示；`ReleaseDC` 放进 finally。新测试 `tests/test_toast_gdi.py`
+  （假 user32 / gdi32，`memmove` 目标是 0 就报错）：修复前 10 项失败（含写 0 地址），修复后全过。
 
 ### M4 监听启动失败后不重试，截图键静默失效
 - **位置**：`hotkey.py:174-177`，`main.py:239-240`

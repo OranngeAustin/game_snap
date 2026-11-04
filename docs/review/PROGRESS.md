@@ -112,7 +112,7 @@ gamesnap-build 跑 quick / all」。
 | M4 | ✅ | 新增 listener_start_fail：修复前 12 项失败，修复后全过 | 见 D18 |
 | M8 | ✅ | 新增 instance_quit：修复前 11 项失败，修复后全过 | 见 D19 |
 | M2 | ✅ | 新增 safe_name：修复前 18 项失败，修复后全过 | 见 D20 |
-| M3 | ⏳ | | |
+| M3 | ✅ | 新增 toast_gdi：修复前 10 项失败，修复后全过 | 按 02-findings 建议，无取舍 |
 
 - **D12 合并 #2–#4**：RUNBOOK 工作规则禁止合并 PR，但用户这次明确要求把 #2–#4 合进 `claude/review-fixes`，以用户的话为准，
   其余 PR（#1 → main、本次新 PR）不合并。做法是在本地依次 `git merge --no-ff` 三个 perf 分支（无冲突），跑 quick
