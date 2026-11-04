@@ -28,6 +28,7 @@ QUICK = {
     "config_values": ["test_config_values.py", "{run}"],
     "add_game": ["test_add_game.py", "{run}"],
     "tray_icon": ["test_tray_icon.py", "{run}"],
+    "tray_refresh": ["test_tray_refresh.py", "{run}"],
     "blocklist_remove": ["test_blocklist_remove.py", "{run}"],
     "yuzu_naming": ["test_yuzu_naming.py", "{run}"],
     "clipboard": ["test_clipboard.py", "{run}"],

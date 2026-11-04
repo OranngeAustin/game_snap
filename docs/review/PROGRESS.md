@@ -107,7 +107,7 @@ gamesnap-build 跑 quick / all」。
 | 合并 #2–#4 | ✅ | quick 6 过 4 失败（同基线） | 见 D12 |
 | M7 | ✅ | 新增 listener_sync：修复前 6 项失败，修复后全过 | 见 D15 |
 | M5 | ✅ | 新增 config_values：修复前 93 项失败并抛异常，修复后全过 | 见 D16 |
-| M6 | ⏳ | | |
+| M6 | ✅ | 新增 tray_refresh：修复前 3 项失败，修复后全过 | 见 D17 |
 | M1 | ⏳ | | |
 | M4 | ⏳ | | |
 | M8 | ⏳ | | |
@@ -132,4 +132,8 @@ gamesnap-build 跑 quick / all」。
   ②games / launchers 只去掉个别坏项而不是整个回退，免得一项写错就丢掉整份游戏名单；③有改动就另存原文件，因为之后的 `set()`
   会把改过的配置写回去；④轮询间隔下限 0.1 秒（防忙等），没设上限。核对过所有已有测试写的配置：轮询 1 秒、宽限 1–10 秒、
   截图键 0xC0 / F24，都在合法范围，校验不会改动它们。
+- **D17 M6 的范围**：只做 02-findings 建议的「整体加锁 + 状态没变不设图标」。菜单照旧每次重建：blocklist_remove 断言移除游戏后
+  「tray refreshed」（`update_menu` 次数增加），菜单里的游戏名单也确实会变。锁里调用的 pystray 操作（Shell_NotifyIcon、LoadImage、
+  CreatePopupMenu）都不会同步等托盘线程处理消息，托盘线程在菜单回调里调 refresh_tray 等锁也不会死锁。Q1（菜单显示中被 DestroyMenu）
+  不在这把锁的覆盖范围，仍留在待人工确认。
 

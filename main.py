@@ -155,13 +155,15 @@ class App:
         self._idle_since = time.monotonic()  # 从这时起既没有游戏也没有启动器
         self._next_trim = time.monotonic() + 4   # 启动后几秒、初始化都做完了再第一次修剪
         self._quitting = False
+        self._tray_lock = threading.Lock()   # refresh_tray 会被多个线程调用，pystray 自己不加锁（M6）
+        self._tray_state = "idle"            # 托盘上现在显示的图标
 
         self.toast = Toast()
         self.worker = CaptureWorker(self)
         self.watcher = GameWatcher(cfg.games_lower, cfg.launchers_lower,
                                    lambda: float(cfg["poll_interval_sec"]), self.on_poll)
         self.dualsense = DualSenseGuard(lambda: cfg["dualsense_quad"], self._on_dualsense)
-        self.icon = pystray.Icon("GameSnap", make_icon("idle"), "GameSnap", self._menu())
+        self.icon = pystray.Icon("GameSnap", make_icon(self._tray_state), "GameSnap", self._menu())
 
     def run(self) -> None:
         self.toast.start()
@@ -431,11 +433,17 @@ class App:
         return "等待游戏启动…"
 
     def refresh_tray(self) -> None:
-        state = "paused" if self.paused else ("active" if self.games else "idle")
-        self.icon.icon = make_icon(state)
-        self.icon.title = (f"GameSnap · {self.status_text()}\n"
-                           f"截图键 {key_name(self.cfg['hotkey'])} · 本次已截 {self.shot_count} 张")
-        self.icon.update_menu()
+        """GameWatcher、Saver、Timer、学键 / 添加线程、托盘线程都会调。pystray 换图标（DestroyIcon / LoadImage /
+        Shell_NotifyIcon）、重建菜单都在调用线程里直接做、不加锁，所以整个刷新放进一把锁，状态在锁里算，
+        晚到的线程不会用旧状态盖掉新状态；图标状态没变就不重设（02-findings M6）。"""
+        with self._tray_lock:
+            state = "paused" if self.paused else ("active" if self.games else "idle")
+            if state != self._tray_state:
+                self.icon.icon = make_icon(state)
+                self._tray_state = state
+            self.icon.title = (f"GameSnap · {self.status_text()}\n"
+                               f"截图键 {key_name(self.cfg['hotkey'])} · 本次已截 {self.shot_count} 张")
+            self.icon.update_menu()
 
     def _toggle(self, key: str):
         def action(icon, item):

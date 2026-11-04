@@ -39,6 +39,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | config_values | test_config_values.py | config.json 里的值类型不对、超出范围（轮询间隔 0 或 null、games 为 null、截图键写坏等）：回退默认值并记日志，games / launchers 只去掉不对的项，先另存原文件；合法的值（含边界值、0 / 1 当开关）一个不改（纯 Python，云端 Linux 也能跑） |
 | add_game | test_add_game.py | 「添加游戏…」：提示、拒收、加入、已在名单、超时、和「更换截图键…」互斥、按键和超时同时到；`--launch` 支持链接 |
 | tray_icon | test_tray_icon.py | 托盘图标三种状态的像素逐字节不变、每次返回新对象（云端 Linux 也能跑） |
+| tray_refresh | test_tray_refresh.py | 多个线程同时刷新托盘：换图标不交叠、晚到的线程不会用旧状态盖掉新状态、图标状态没变不重设（菜单和提示文字照样更新）。不建托盘图标（纯 Python，云端 Linux 也能跑） |
 | blocklist_remove | test_blocklist_remove.py | 黑名单拦截和放行的样例；「游戏名单」移除：确认、取消、过期的菜单项、名字带 `&`、空名单、原生 Win32 菜单 |
 | yuzu_naming | test_yuzu_naming.py | yuzu 截图按窗口标题里的游戏名分文件夹；跨进程读标题；文件名里的非法字符 |
 | clipboard | test_clipboard.py | 复制到剪贴板的数据（CF_DIB）逐字节不变、不改原图、剪贴板被占用时的重试；剪贴板换成假的，不碰真剪贴板（云端 Linux 也能跑） |
