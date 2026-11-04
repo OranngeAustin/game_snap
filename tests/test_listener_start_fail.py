@@ -145,6 +145,8 @@ app._on_games_changed({})
 check("游戏退出后摘掉", app.listener, None)
 
 print("== 3. 点「更换截图键…」时监听启动失败")
+if app._learn_timer is not None:
+    app._learn_timer.join(2)   # 第 2 节的计时器已取消，等它的线程结束，下面「计时器没开」的检查才不受时序影响
 toast.calls.clear()
 FakeListener.mode = "fail"
 try:
