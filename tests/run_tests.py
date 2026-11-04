@@ -41,6 +41,7 @@ QUICK = {
     "listener_start_fail": ["test_listener_start_fail.py", "{run}"],
     "instance_quit": ["test_instance_quit.py", "{run}"],
     "clipboard_error": ["test_clipboard_error.py", "{run}"],
+    "save_png_fail": ["test_save_png_fail.py", "{run}"],
 }
 SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],

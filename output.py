@@ -69,8 +69,12 @@ def save_png(img: Image.Image, root: Path, game: str, when: datetime,
         info.add_text(k, v)
     # 先写临时文件再改名，避免半截文件
     tmp = path.with_suffix(".png.part")
-    img.save(tmp, "PNG", pnginfo=info, compress_level=6)
-    tmp.replace(path)
+    try:
+        img.save(tmp, "PNG", pnginfo=info, compress_level=6)
+        tmp.replace(path)
+    except Exception:
+        tmp.unlink(missing_ok=True)   # 磁盘满、被占用时不留半截文件（02-findings L11）
+        raise
     return path
 
 
