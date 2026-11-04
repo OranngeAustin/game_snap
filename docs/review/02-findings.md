@@ -171,6 +171,32 @@
 
 ## 低
 
+**处理状态**（2026-11-04，分支 `claude/low-fixes`，每项一个 commit，先写测试、确认它在修复前失败，再修）：
+
+| 编号 | 状态 | commit | 新测试（quick） | 修复前 → 修复后 | 说明 |
+|---|---|---|---|---|---|
+| L1 | ✅ 已修复 | 31873dc | held_key | 3 项失败 → 全过 | 距上次按下超过 1.5 秒（系统按键重复延迟最长 1 秒）当新按下；`set_binding` / `start_learning` 清掉按住状态。没加 `_held_vk`：`_held` 只跟踪绑定键，换键时清掉就够了 |
+| L2 | ✅ 已修复 | b213929 | learn_race | 2 → 全过 | `_finish_learning` 的检查和置位放进 `_learn_lock` |
+| L3 | ✅ 已修复 | 199aecc | win_event_hook | 1 → 全过 | 失败时 `log.warning` 带错误码 |
+| L4 | ✅ 已修复 | 7564bf4 | key_name | 10 → 全过 | `MAPVK_VK_TO_VSC_EX`，扩展键置 lParam 第 24 位；只影响显示 |
+| L5 | ✅ 已修复 | 88f6eca | d3d_staging | 3 → 全过 | release 后立即把 `_staging` 和尺寸清零 |
+| L6 | ✅ 已修复 | 598b848 | d3d_release | 3 → 全过 | 只改异常路径：释放显卡 / device / context 再抛出 |
+| L7 | ⏭ 跳过 | — | — | — | 修复风险过大：要定「连续失败几次就放弃 WGC」或冷却时间，这会改变截图后端的退路（放弃后独占全屏截出来是黑的）。参数要在 Windows 上模拟驱动重置才能定，云端没法验证；和 L8 是同一个策略问题，一起留给人工 |
+| L8 | ⏭ 跳过 | — | — | — | 修复风险过大：「过一段时间重试」会和 L7 叠加（每次重试都可能再换下一套设备），重试间隔、上限同样要在 Windows 上实测 |
+| L9 | ✅ 已修复 | 8533002 | session_init_fail | 2 → 全过 | 建到一半失败的会话放进模块级 `_half_built` 留着引用 |
+| L10 | ✅ 已修复 | b51adab | clipboard_error | 6 → 全过 | `copy_to_clipboard` 内部捕获、记日志、返回 False |
+| L11 | ✅ 已修复 | a5777d4 | save_png_fail | 1 → 全过 | 失败时 `unlink(missing_ok=True)` 再抛出 |
+| L12 | ✅ 已修复（PR #2） | 5878a8b | clipboard（特征测试） | — | 阶段 6 的 P1：图已是 RGB 就不 convert |
+| L13 | ✅ 已处理（PR #4，换了方案） | 453ecde | toast_card（特征测试） | — | 阶段 6 的 P3：缓存画好的卡片，不缓存字体（字体缓存每个字号常驻 +3.5 MB，见 PROGRESS D9）。同一句提示不再新建字体，新的文字仍会新建 |
+| L14 | ✅ 已修复（PR #3 + M6） | ee9823e、2e32e53 | tray_icon、tray_refresh | — | 阶段 6 的 P2 按状态缓存图标；M6 状态没变时不重设图标 |
+| L15 | ✅ 已修复 | 18bf92e | scan_fail | 7 → 全过 | EnumProcesses 失败 / 返回 0 个、快照为空时抛异常，GameWatcher 跳过这一轮 |
+| L16 | ✅ 已修复 | bb167cf | idle_order | 4 → 全过 | 先设 `_idle_since` 再清标志 |
+| L17 | ✅ 已修复 | c7ff386 | games_update | 4 → 全过 | 新增 `Config.update(key, change)`，在锁里读改写 |
+| L18 | ✅ 已修复 | a06cd72 | config_save_fail | 11 → 全过 | `save()` 隔 0.2 秒重试 5 次，仍失败就记日志、提示「设置没保存上」，不抛异常 |
+
+全部只在云端 Linux 上跑过测试（quick 27 过 4 失败，失败的是缺 Windows 模块的 add_game、blocklist_remove、yuzu_naming、dualsense），
+合并前要回 Windows 用 gamesnap-build 跑 quick 和 all。L19–L21（安全一节）不在这次范围内。
+
 | 编号 | 位置 | 问题 | 修复建议 | 把握 |
 |---|---|---|---|---|
 | L1 | `hotkey.py:232-242`、`138-140` | `_held` 不记按键码，抬起事件丢失（安全桌面、别的钩子吞掉、按住时 `set_binding`）会卡在 True：下一次真按被当成自动重复，吞掉却不截图 | 记 `_held_vk`；`set_binding`/`start_learning` 时重置；和上次按下的 `kb.time` 相差超过约 1 秒当新按下 | 高 |

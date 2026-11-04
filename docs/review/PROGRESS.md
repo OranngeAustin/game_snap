@@ -162,3 +162,50 @@ gamesnap-build 跑 quick / all」。
 - 云端 quick：14 过 4 失败，失败的仍是 add_game、blocklist_remove、yuzu_naming、dualsense（缺 Windows 模块，同基线）。all 跑不了。
 - 没推送 main、没 force push、没删除分支；除了用户明确要求的 #2–#4，没合并任何 PR。
 
+## 低危修复（2026-11-04，分支 `claude/low-fixes`）
+
+用户新目标：从 `claude/medium-fixes` 建 `claude/low-fixes`，修 02-findings 的低危问题 L1–L18，每个问题一个 commit、能写测试的先写测试；
+误报、纯风格、修复风险过大的标「⏭ 跳过」。PR 目标分支 `claude/medium-fixes`。只遵守 RUNBOOK 的「工作规则」。
+
+| 编号 | 状态 | 说明 |
+|---|---|---|
+| L10 | ✅ | 新增 clipboard_error：修复前 6 项失败，修复后全过 |
+| L11 | ✅ | 新增 save_png_fail：修复前 1 项失败，修复后全过 |
+| L15 | ✅ | 新增 scan_fail：修复前 7 项失败，修复后全过 |
+| L16 | ✅ | 新增 idle_order：修复前 4 项失败，修复后全过 |
+| L2 | ✅ | 新增 learn_race：修复前 2 项失败，修复后全过 |
+| L17 | ✅ | 新增 games_update：修复前 4 项失败，修复后全过 |
+| L18 | ✅ | 新增 config_save_fail：修复前 11 项失败，修复后全过 |
+| L1 | ✅ | 新增 held_key：修复前 3 项失败，修复后全过 |
+| L4 | ✅ | 新增 key_name：修复前 10 项失败，修复后全过 |
+| L3 | ✅ | 新增 win_event_hook：修复前 1 项失败，修复后全过 |
+| L5 | ✅ | 新增 d3d_staging：修复前 3 项失败，修复后全过 |
+| L6 | ✅ | 新增 d3d_release：修复前 3 项失败，修复后全过 |
+| L9 | ✅ | 新增 session_init_fail：修复前 2 项失败，修复后全过 |
+| L7 | ⏭ 跳过 | 修复风险过大：改截图后端的退路策略，参数要在 Windows 上模拟驱动重置才能定 |
+| L8 | ⏭ 跳过 | 同 L7，和 L7 是同一个重试策略问题 |
+| L12 | ✅ | 已由 PR #2（P1）修复 |
+| L13 | ✅ | 已由 PR #4（P3，缓存卡片而不是字体）处理 |
+| L14 | ✅ | 已由 PR #3（P2）+ M6 修复 |
+<!-- 低危进度表末尾 -->
+
+- **D22 测试范围**：同 D14，「每次修复后运行全部测试」在云端只能跑 quick 里不依赖 Windows 的那些；all 的 5 个和 4 个 Windows quick
+  测试跑不了，改动相关的断言逐条核对。每项的流程固定为：新测试先在旧代码上跑、确认失败 → 修 → 新测试全过 → quick 失败的只有那 4 个
+  环境原因 → 提交推送。
+- **D23 一个测试桩的错误**：L15 的测试第一次跑时，假 EnumProcesses 按 4 字节算进程数，而 Linux 上 `wt.DWORD` 是 8 字节，
+  修复后的代码也没全过。辅助脚本按规则停下、没提交；把 watcher.py 恢复成旧代码、改正测试桩后重走了一遍（修复前 7 项失败，修复后全过）。
+- **D24 L1 没加 `_held_vk`**：`_held` 只跟踪当前绑定的那一个键（别的键在前面就返回了），换键（`set_binding`）和学键时清掉就够了；
+  再加「超过 1.5 秒没收到按下就当新按下」覆盖抬起事件丢失。test_add_game 调 `_handle_key` 的时刻都是 0、按下抬起成对，行为不变。
+
+### 低危修复的最终状态
+
+- L1–L6、L9–L11、L15–L18 ✅（13 项，每项一个 commit、一个新测试，都先确认在修复前失败）；L12–L14 ✅（已在 PR #2–#4 和 M6 里修过）；
+  L7、L8 ⏭（修复风险过大）。已有测试的断言一条没改。
+- 云端 quick：27 过 4 失败，失败的仍是 4 个缺 Windows 模块的。
+- all（D25）：`run_tests.py all` 在 Linux 上一开头就停下（它先 import watcher 检查 GameSnap 是否在运行，缺 `ctypes.WinDLL`）。
+  5 个 SLOW 测试逐个直接运行，全部在准备阶段失败、还没执行到项目代码：lifecycle_source、add_live 找不到
+  `D:\anaconda3\envs\gamesnap-build\python.exe`；remove_live、multi_exit 找不到 `C:\Windows\System32\PING.EXE`；lifecycle_exe
+  找不到 `dist\GameSnap\GameSnap.exe`。真正跑它们要在 Windows 上先重新打包（会换掉正在用的 GameSnap），留给用户。
+- 没推送 main、没 force push、没删除分支、没合并任何 PR。
+- PR：https://github.com/OranngeAustin/game_snap/pull/6（`claude/low-fixes → claude/medium-fixes`，不合并）。
+
