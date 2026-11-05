@@ -13,7 +13,7 @@ D:\anaconda3\envs\gamesnap-build\python.exe -X utf8 tests\run_tests.py add_game 
 ```
 
 - 不带参数（quick）：进程内的测试，约半分钟，不启动 GameSnap。
-- `all`：再加上真的启动 GameSnap 的测试（源码版和打包版），约 3 分钟。先退出正在运行的 GameSnap；改了源码要先重新打包，打包版测试测的是 `dist\GameSnap\`。
+- `all`：再加上真的启动 GameSnap 的测试（源码版和打包版），约 2 分半。先退出正在运行的 GameSnap；改了源码要先重新打包，打包版测试测的是 `dist\GameSnap\`。
 - 也可以只写要跑的测试名（见下表）。
 
 结果在 `build\test_runs\suite_<日期>_<时间>\summary.txt`（`--out <文件夹>` 可以指定位置），每个测试的输出在同一文件夹的 `<名字>.txt` 和 `<名字>\` 里。有测试没过时退出码为 1。
@@ -51,6 +51,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | listener_sync | test_listener_sync.py | 按键监听该挂还是该摘：游戏退出的同时点「更换截图键…」「添加游戏…」，或者学键 / 添加结束的同时检测到游戏，监听都不能被错摘（学键要能超时结束、之后能自动退出）。把线程交错固定下来重放，不靠运气；不挂钩子（纯 Python，云端 Linux 也能跑） |
 | listener_start_fail | test_listener_start_fail.py | 按键监听启动失败（建窗口 / 挂钩子出错）：wait_ready() 返回 False；App 不留下死掉的监听、提示一次、之后需要时重建；更换截图键 / 添加游戏立即复位不卡住；只是启动慢的照旧留着。真的 InputListener 那一项把建窗口换成报错，不挂钩子（纯 Python，云端 Linux 也能跑） |
 | instance_quit | test_instance_quit.py | 单实例的退出信号：拿到互斥体就建好、serve() 之前收到的信号不丢、接管时对方信号晚到会重试、接管后清掉残留信号；App 托盘就绪后才开始等信号，_quit 中途出错也让托盘退出。kernel32 换成假的，不建真的命名对象、不影响正在运行的 GameSnap（纯 Python，云端 Linux 也能跑） |
+| exit_watchdog | test_exit_watchdog.py | 退出看门狗：到时间之前不动手；到时间去掉托盘图标、结束进程（退出码 0）、记日志；去图标出错也照样结束；_quit 先开看门狗再让托盘退出，前面出错也开，开不起来也让托盘退出；测试里建的 App 不开。os._exit 换成桩（纯 Python，云端 Linux 也能跑） |
 | clipboard_error | test_clipboard_error.py | 写剪贴板时 EmptyClipboard / SetClipboardData 出错：copy_to_clipboard 返回 False 不抛异常、剪贴板照样关上；finish_shot 仍提示「已截图」、计数加一。假剪贴板（纯 Python，云端 Linux 也能跑） |
 | save_png_fail | test_save_png_fail.py | save_png 写到一半失败（磁盘满）：异常照常抛出、不留下 .png.part；改名时被占用：重试后存上，一直占用时异常照常抛出、删掉 .png.part；删也删不掉时抛的还是改名的异常、日志记下留在哪里；之后照常保存（纯 Python，云端 Linux 也能跑；真的占用只在 Windows 上） |
 | log_fail | test_log_fail.py | gamesnap.log、crash.log 打不开或删不掉：不崩溃，`--launch` 和单实例检查照常；日志被另一个进程开着时轮转失败：一行不丢，旧的 .log.1 还在，放开后下一条就轮转成功（纯 Python，云端 Linux 也能跑；真实占用只在 Windows 上） |
@@ -60,7 +61,7 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | games_update | test_games_update.py | 「添加游戏」和「移除游戏」同时改游戏名单：两边的改动都留下（内存和 config.json）。把线程交错固定下来重放（纯 Python，云端 Linux 也能跑） |
 | config_save_fail | test_config_save_fail.py | 保存 config.json 时文件被短暂占用：重试后存上；一直占用时不抛异常、提示「设置没保存上」；更换截图键时保存失败，监听照样换新键、钩子照样摘、托盘照样刷新；启动时读不出来也没另存上：托盘就绪时弹窗提醒，对话框没人点也不挡住退出（纯 Python，云端 Linux 也能跑） |
 | held_key | test_held_key.py | 截图键「按住」状态不会因为丢了抬起事件而卡住：隔 1.5 秒以上的按下当成新按下；换截图键、开始学键时清掉按住状态。直接调 _handle_key，不挂钩子（纯 Python，云端 Linux 也能跑） |
-| key_name | test_key_name.py | 截图键的显示名：Insert / Delete / Home / End / PgUp / PgDn / 方向键显示自己的名字而不是小键盘键，Pause、Num Lock、Print Screen 不张冠李戴；Left Windows、Right Ctrl、小键盘、F 键、字符键、鼠标侧键不变。假 user32 的回答抄自真机（纯 Python，云端 Linux 也能跑）；Windows 上再调真实 API 查一遍，不发按键 |
+| key_name | test_key_name.py | 截图键的显示名：Insert / Delete / Home / End / PgUp / PgDn / 方向键显示自己的名字而不是小键盘键，Pause、Num Lock、Print Screen 不张冠李戴；F13–F24、小键盘数字和运算符、媒体键、浏览器键用自己写的名字；Left Windows、Right Ctrl、F1–F12、字符键、鼠标侧键不变。假 user32 的回答抄自真机（纯 Python，云端 Linux 也能跑）；Windows 上再调真实 API 查一遍，不发按键 |
 | win_event_hook | test_win_event_hook.py | 前台切换事件钩子（SetWinEventHook）挂不上时日志里有警告，监听照样启动；挂上时没有。user32 / 建窗口 / 消息循环都是假的（纯 Python，云端 Linux 也能跑） |
 | d3d_staging | test_d3d_staging.py | 换暂存纹理时新建失败：旧纹理只释放一次、指针清零，之后能正常新建。d3d 的 COM 调用换成假的（纯 Python，云端 Linux 也能跑） |
 | d3d_release | test_d3d_release.py | D3D 初始化的异常路径不漏 COM 对象：GetDesc1 抛错时释放这块显卡；取多线程保护接口抛错时释放刚建的 device / context；正常路径不多释放。DXGI / D3D11 换成假的（纯 Python，云端 Linux 也能跑） |
@@ -68,9 +69,10 @@ Get-Content -Encoding UTF8 "$out\summary.txt"
 | lifecycle_source、lifecycle_exe | test_lifecycle.py | 源码版 / 打包版走一遍：启动 → 检测到游戏 → 关游戏 → 自动退出 |
 | add_live | test_add_live.py | 真程序里「添加游戏…」：等按键时不自动退出、超时、加入后马上生效、游戏关了再退出 |
 | remove_live | test_remove_live.py | 真程序里移除正在运行的游戏：不再跟踪它，按规则自动退出 |
+| exit_stuck | test_exit_stuck.py | 真程序里退出时消息循环收不到 WM_QUIT（托盘菜单开着时就是这样，这里不真的开菜单、不抢前台）：进程自己结束、退出码 0、日志有一笔；正常退出时看门狗不出声。用自己的单实例名字 |
 | multi_exit | test_multi_exit.py | 打包版：几个游戏和启动器按不同顺序关闭，全关掉才退出 |
 
-辅助脚本，不单独运行：fake_window.py（子进程里的隐藏窗口）；gamesnap_tripwire.py、add_live_inner.py、remove_live_inner.py（打好补丁再启动 main.py）。
+辅助脚本，不单独运行：fake_window.py（子进程里的隐藏窗口）；gamesnap_tripwire.py、add_live_inner.py、remove_live_inner.py、exit_stuck_inner.py（打好补丁再启动 main.py）。
 
 DualSense 插着但不是四声道时，dualsense 和 lifecycle_source 会失败：那是绊线拦下了一次真的改设置，不是程序坏了。
 

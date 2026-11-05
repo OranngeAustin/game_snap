@@ -40,6 +40,7 @@ QUICK = {
     "listener_sync": ["test_listener_sync.py", "{run}"],
     "listener_start_fail": ["test_listener_start_fail.py", "{run}"],
     "instance_quit": ["test_instance_quit.py", "{run}"],
+    "exit_watchdog": ["test_exit_watchdog.py", "{run}"],
     "clipboard_error": ["test_clipboard_error.py", "{run}"],
     "save_png_fail": ["test_save_png_fail.py", "{run}"],
     "log_fail": ["test_log_fail.py", "{run}"],
@@ -59,6 +60,7 @@ SLOW = {
     "lifecycle_source": ["test_lifecycle.py", "source", "{run}"],
     "add_live": ["test_add_live.py", "{run}"],
     "remove_live": ["test_remove_live.py", "{run}"],
+    "exit_stuck": ["test_exit_stuck.py", "{run}"],
     "lifecycle_exe": ["test_lifecycle.py", "exe", "{run}"],
     "multi_exit": ["test_multi_exit.py", "{run}"],
 }

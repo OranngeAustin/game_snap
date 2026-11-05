@@ -47,6 +47,18 @@ _NAME_SCANS = {
     0x2C: (0x37, True),    # Print Screen：返回 0x54，是 Sys Req
     0x90: (0x45, True),    # Num Lock：返回 0x45，不加标志是 Pause
 }
+# 系统给不出能用的名字，直接写：F13–F24 的 GetKeyNameTextW 返回空；小键盘数字和运算符 MAPVK_VK_TO_CHAR 有字符，
+# 和主键盘同名；媒体键、浏览器键的扫描码去掉 0xE0 前缀是字母键，静音会显示成 D（05-windows-verification.md）
+_FIXED_NAMES = {
+    **{0x7C + i: f"F{13 + i}" for i in range(12)},
+    **{0x60 + i: f"Num {i}" for i in range(10)},
+    0x6A: "Num *", 0x6B: "Num +", 0x6D: "Num -", 0x6E: "Num .", 0x6F: "Num /",
+    0xA6: "浏览器后退", 0xA7: "浏览器前进", 0xA8: "浏览器刷新", 0xA9: "浏览器停止",
+    0xAA: "浏览器搜索", 0xAB: "浏览器收藏", 0xAC: "浏览器主页",
+    0xAD: "静音键", 0xAE: "音量减", 0xAF: "音量加",
+    0xB0: "下一首", 0xB1: "上一首", 0xB2: "停止播放", 0xB3: "播放 / 暂停",
+    0xB4: "邮件键", 0xB5: "媒体选择键", 0xB6: "应用键 1", 0xB7: "应用键 2",
+}
 # 截图键按下后这么久没再收到它的按下事件，就不算「按住不放」：抬起事件可能丢了（L1）。
 # 系统的按键重复延迟最长 1 秒，之后约每 33ms 重复一次，所以真按住时不会隔这么久
 HELD_STALE_SEC = 1.5
@@ -112,6 +124,8 @@ def key_name(binding: dict) -> str:
     if binding.get("type") == "mouse":
         return "鼠标侧键（后退）" if binding.get("button") == 4 else "鼠标侧键（前进）"
     vk = int(binding.get("vk", 0))
+    if vk in _FIXED_NAMES:
+        return _FIXED_NAMES[vk]
     ch = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_CHAR) & 0x7FFF
     if ch and chr(ch).isprintable() and not chr(ch).isspace():
         return chr(ch)

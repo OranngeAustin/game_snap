@@ -79,6 +79,9 @@ main.default_game_name = lambda hwnd, exe: "新游戏"
 main.confirm = lambda text: True
 
 
+keep_icons: list = []
+
+
 def run(a, b, label: str) -> None:
     cfg_path.write_text(json.dumps({"games": START, "toast": True, "sound": False, "copy_to_clipboard": False,
                                     "dualsense_quad": False, "save_dir": str(RUN / "shots")},
@@ -86,6 +89,8 @@ def run(a, b, label: str) -> None:
     cfg = Config(cfg_path)
     cfg.data = HookDict(cfg.data)
     app = main.App(cfg)
+    # pystray 的窗口类名里有 id(icon)，用完也不注销：旧图标被回收后地址可能给新图标，注册时报「类已存在」。留着不回收
+    keep_icons.append(app.icon)
     app.toast = types.SimpleNamespace(show=lambda *x, **k: None)
     app.icon = types.SimpleNamespace(icon=None, title="", update_menu=lambda: None)
     app.worker.post = lambda *msg: None

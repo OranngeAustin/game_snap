@@ -123,7 +123,7 @@ Saver 线程：
 |---|---|---|
 | winrt-*（≥3.2） | Windows.Graphics.Capture | 只在第一次抓帧时导入 |
 | mss（≥10） | GDI 兜底截图 | |
-| pillow（≥10.1） | 图像转换、PNG 编码、托盘图标、提示卡片 | 主要 CPU 消耗都在它里面 |
+| pillow（≥13.0） | 图像转换、PNG 编码、托盘图标、提示卡片 | 主要 CPU 消耗都在它里面 |
 | pystray（≥0.19） | 托盘图标与菜单（win32 后端） | 非线程安全的第三方 UI 库，被多个线程调用 `refresh_tray` |
 | pywin32（≥306） | 只用了 `win32clipboard` | |
 | pyinstaller（≥6） | 打包 | |

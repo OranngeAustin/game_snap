@@ -6,7 +6,7 @@
   退出   —— 游戏和启动器都关掉若干秒后，GameSnap 自己退出
 同一时间只运行一个 GameSnap，规则见 instance.py。
 运行期间顺带照看 DualSense 手柄的声音设置（原神的手柄震动要求四声道），见 dualsense.py。
-运行：python main.py [--launch 启动器.exe [--launch-args 参数]] [--no-elevate] [--console]
+运行：python main.py [--launch 启动器.exe [--launch-args 参数]] [--no-elevate] [--console] [--config 配置文件]
 """
 from __future__ import annotations
 
@@ -54,6 +54,7 @@ CRASH_LOG = APP_DIR / "crash.log"
 LEARN_TIMEOUT_SEC = 10
 ADD_TIMEOUT_SEC = 15     # 「添加游戏」等用户在游戏里按截图键的时间
 TRIM_INTERVAL_SEC = 60   # 等待进游戏时，每隔这么久把闲置内存页交还系统
+EXIT_WATCHDOG_SEC = 3    # 退出时等托盘消息循环结束的时间，过了就直接结束进程（见 start_exit_watchdog）
 
 _psapi = ctypes.WinDLL("psapi")
 _psapi.EmptyWorkingSet.argtypes = [wt.HANDLE]
@@ -162,6 +163,7 @@ class App:
         self._tray_lock = threading.Lock()   # refresh_tray 会被多个线程调用，pystray 自己不加锁（M6）
         self._tray_state = "idle"            # 托盘上现在显示的图标
         self.on_tray_ready = None            # 托盘就绪后调用（main 在这时才开始等单实例的退出信号，M8）
+        self.on_quitting = None              # 让托盘退出之前调用（main 在这时开始退出看门狗）
 
         self.toast = Toast()
         self.worker = CaptureWorker(self)
@@ -517,6 +519,11 @@ class App:
             log.exception("退出时出错")
         finally:
             # 前面哪一步出错都要让托盘退出：_quitting 已置位，否则托盘留着、「退出」也点不动（M8）
+            try:
+                if self.on_quitting:   # 在 icon.stop() 之前：它可能阻塞几秒，也可能抛异常
+                    self.on_quitting()
+            except Exception:
+                log.exception("退出时出错")
             icon.stop()
 
     def _menu(self) -> pystray.Menu:
@@ -656,6 +663,25 @@ def launch(path: str, params: str) -> None:
         log.info("已启动：%s %s", path, params)
 
 
+def start_exit_watchdog(icon) -> None:
+    """退出时托盘菜单开着的话，pystray 让消息循环退出的 WM_QUIT 会被菜单的模态循环吃掉，主线程在菜单关掉后一直等在
+    GetMessage，走不到 main() 最后的 os._exit，进程就留下了（05 文档 P7）。到这一步该停的都停了：
+    到时间消息循环还没退出，就在这里结束进程。只在 main() 里用，测试里建的 App 不会把测试进程结束掉。"""
+
+    def force() -> None:
+        log.warning("消息循环 %d 秒内没有退出（多半是退出时托盘菜单开着），直接结束进程", EXIT_WATCHDOG_SEC)
+        try:
+            icon.visible = False   # 否则托盘上留个空图标，鼠标移过去才消失
+        except Exception:
+            log.exception("去掉托盘图标时出错")
+        logging.shutdown()
+        os._exit(0)
+
+    timer = threading.Timer(EXIT_WATCHDOG_SEC, force)
+    timer.daemon = True
+    timer.start()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--launch", help="同时启动这个程序或链接（如米哈游启动器、steam://rungameid/…）")
@@ -693,6 +719,7 @@ def main() -> None:
         # 退出信号在 Instance() 里就建好了；托盘进入消息循环、能正常退出之后才开始等它（02-findings M8）
         app.on_tray_ready = lambda: inst.serve(
             on_quit=lambda: app._auto_quit("由新启动的 GameSnap（管理员权限）接管"))
+        app.on_quitting = lambda: start_exit_watchdog(app.icon)
         app.run()
     except Exception:
         log.exception("GameSnap 异常退出")

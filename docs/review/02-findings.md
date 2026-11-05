@@ -4,6 +4,8 @@
 子代理分组审查（hotkey/winapi/toast；d3d/capture/output；main/config/watcher/instance/dualsense），再由我逐条对照代码核实、
 去重、定级。云端是 Linux，Windows 代码都只能读代码推断；能在 Linux 上复现的标了「已复现」。
 
+> 2026-11-05 注：本文的 file:line 和测试数量是当时（`claude/low-fixes` @ 0bc5178 及之前）的。之后 Windows 验证修了 05 文档的 P1–P7，`config.py`、`hotkey.py`、`main.py`、`output.py` 的行号都移动了，读代码时按函数名找。验证结果见 [05-windows-verification.md](05-windows-verification.md)。
+
 把握程度：**高** = 读代码可以确定，或已复现；**中** = 机制确定、实际后果取决于运行时（GC、驱动、WinRT 实现）；
 **低** = 推测，放进「待人工确认」。
 
@@ -57,7 +59,7 @@
 | M6 | ✅ 已修复 | tray_refresh | 3 项失败 → 全过 | Q1（菜单显示中被 DestroyMenu）不在锁的范围内 |
 | M7 | ✅ 已修复 | listener_sync | 6 项失败 → 全过 | `self.games` 的赋值没挪进锁（不需要，见 PROGRESS D15） |
 | M8 | ✅ 已修复 | instance_quit | 11 项失败 → 全过 | 真实的接管流程要在 Windows 上试一次 |
-| M9 | ⏭ 跳过 | — | — | 要升 Pillow 大版本：RUNBOOK 工作规则「不升级依赖的大版本」，而且要在 Windows 上重新打包验证 |
+| M9 | ✅ 2026-11-04 在 Windows 上修复 | — | — | 当时跳过：RUNBOOK 工作规则「不升级依赖的大版本」，而且要在 Windows 上重新打包验证。之后升到 13.0.0，下限 `pillow>=13.0`，见 05 第 4 节 |
 
 全部修复都只在云端 Linux 上跑过测试（Windows 专属的 add_game、blocklist_remove、yuzu_naming、dualsense 和 all 的 5 个跑不了），
 合并前要回 Windows 用 gamesnap-build 跑 quick 和 all。
@@ -178,7 +180,7 @@
 | L1 | ✅ 已修复 | 31873dc | held_key | 3 项失败 → 全过 | 距上次按下超过 1.5 秒（系统按键重复延迟最长 1 秒）当新按下；`set_binding` / `start_learning` 清掉按住状态。没加 `_held_vk`：`_held` 只跟踪绑定键，换键时清掉就够了 |
 | L2 | ✅ 已修复 | b213929 | learn_race | 2 → 全过 | `_finish_learning` 的检查和置位放进 `_learn_lock` |
 | L3 | ✅ 已修复 | 199aecc | win_event_hook | 1 → 全过 | 失败时 `log.warning` 带错误码 |
-| L4 | ✅ 已修复 | 7564bf4 | key_name | 10 → 全过 | `MAPVK_VK_TO_VSC_EX`，扩展键置 lParam 第 24 位；只影响显示 |
+| L4 | ✅ 已修复（补修见右） | 7564bf4 | key_name | 10 → 全过 | `MAPVK_VK_TO_VSC_EX`，扩展键置 lParam 第 24 位；只影响显示。**7564bf4 在真机上 10 个键没修好**（测试的假 user32 和真机不符），05 的 P6 补修；真实按键确认等 M-07 |
 | L5 | ✅ 已修复 | 88f6eca | d3d_staging | 3 → 全过 | release 后立即把 `_staging` 和尺寸清零 |
 | L6 | ✅ 已修复 | 598b848 | d3d_release | 3 → 全过 | 只改异常路径：释放显卡 / device / context 再抛出 |
 | L7 | ⏭ 跳过 | — | — | — | 修复风险过大：要定「连续失败几次就放弃 WGC」或冷却时间，这会改变截图后端的退路（放弃后独占全屏截出来是黑的）。参数要在 Windows 上模拟驱动重置才能定，云端没法验证；和 L8 是同一个策略问题，一起留给人工 |
@@ -220,7 +222,7 @@
 
 ## 待人工确认
 
-- **Q1 菜单开着时被别的线程 `DestroyMenu`**（M6 的一种情况）：实际表现是菜单失效还是崩溃，要在 Windows 上复现才知道。
+- **Q1 菜单开着时被别的线程 `DestroyMenu`**（M6 的一种情况）：**2026-11-05 已在 Windows 上测过，无害**：`DestroyMenu` 成功，旧菜单继续显示，主菜单和子菜单照常能选、回调照常执行，200 次连续刷新不失败、句柄不漏。见 05 第 2 节 Q1。
 - **Q2 低级键盘钩子超时被系统摘掉**：钩子回调要拿 GIL；别的线程在不释放 GIL 的长 C 调用里时，回调可能超过 `LowLevelHooksTimeout`，
   Windows 7 起会静默摘掉钩子，代码里没有检测。建议在日志里记钩子回调耗时观察。
 - **Q3 `stop()` 超时后可能挂着两个钩子**：`InputListener.stop()` 的 `join(timeout=2)` 之后不查 `is_alive()`，线程卡住时 App 照样新建
@@ -273,8 +275,8 @@
 - **修复建议**：回 Windows 用 `gamesnap-build\python.exe -m pip show pillow` 看实际版本；升到 13.x 是大版本升级（RUNBOOK 禁止
   这里做），需要在 Windows 上跑 `all` 并重新打包验证后再改下限。放进「待人工确认」。
 - **把握**：高（版本事实）；可利用性低。
-- **状态**：⏭ 跳过（2026-11-04 中危修复时）。修它就是把 Pillow 升到 13.x 并提高下限：RUNBOOK 工作规则禁止升级依赖的大版本，
-  而且打包版要在 Windows 上重新打包、跑 all 才能验证，云端做不了。仍在「待人工确认」。
+- **状态**：✅ 2026-11-04 在 Windows 上升到 13.0.0、下限改成 `pillow>=13.0`，逐字节对比和全量测试通过（05 第 4 节）。中危修复时跳过的原因：RUNBOOK 工作规则禁止升级依赖的大版本，
+  而且打包版要在 Windows 上重新打包、跑 all 才能验证，云端做不了。
 
 ### 低
 

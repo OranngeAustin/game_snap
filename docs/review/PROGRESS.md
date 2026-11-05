@@ -113,7 +113,7 @@ gamesnap-build 跑 quick / all」。
 | M8 | ✅ | 新增 instance_quit：修复前 11 项失败，修复后全过 | 见 D19 |
 | M2 | ✅ | 新增 safe_name：修复前 18 项失败，修复后全过 | 见 D20 |
 | M3 | ✅ | 新增 toast_gdi：修复前 10 项失败，修复后全过 | 按 02-findings 建议，无取舍 |
-| M9 | ⏭ 跳过 | | 要升 Pillow 大版本，工作规则不允许，且要在 Windows 上重新打包验证 |
+| M9 | ⏭ 当时跳过 | | 要升 Pillow 大版本，工作规则不允许，且要在 Windows 上重新打包验证。2026-11-04 已在 Windows 上升级（05 第 4 节） |
 | 建 PR | ✅ | quick 14 过 4 失败（连跑 3 次一样） | https://github.com/OranngeAustin/game_snap/pull/5（`claude/medium-fixes → claude/review-fixes`；2026-11-04 已按用户要求合并，见 D26），见 D13、D21 |
 
 - **D12 合并 #2–#4**：RUNBOOK 工作规则禁止合并 PR，但用户这次明确要求把 #2–#4 合进 `claude/review-fixes`，以用户的话为准，
@@ -177,7 +177,7 @@ gamesnap-build 跑 quick / all」。
 | L17 | ✅ | 新增 games_update：修复前 4 项失败，修复后全过 |
 | L18 | ✅ | 新增 config_save_fail：修复前 11 项失败，修复后全过 |
 | L1 | ✅ | 新增 held_key：修复前 3 项失败，修复后全过 |
-| L4 | ✅ | 新增 key_name：修复前 10 项失败，修复后全过 |
+| L4 | ✅ | 新增 key_name：修复前 10 项失败，修复后全过。真机上没修好，05 的 P6 补修，真实按键确认等 M-07 |
 | L3 | ✅ | 新增 win_event_hook：修复前 1 项失败，修复后全过 |
 | L5 | ✅ | 新增 d3d_staging：修复前 3 项失败，修复后全过 |
 | L6 | ✅ | 新增 d3d_release：修复前 3 项失败，修复后全过 |
@@ -221,3 +221,24 @@ gamesnap-build 跑 quick / all」。
   00-SUMMARY（还停在阶段 7）、本文件（#5、#6 写着不合并）、CLAUDE.md（云端「能跑的只有 not_games」、改游戏名单还写 `cfg.set()`）、
   README（缺「设置没保存上」「按键监听没启动起来」两个提示的说明）、02 / 03 / 01 的开头没跟上，在 `claude/review-fixes` 上一起改了。
 
+## Windows 验证（2026-11-04 至 11-05）
+
+在本机 worktree `claude/github-review-local-test-1f6fb7` 里做，过程和结果都在 [05-windows-verification.md](05-windows-verification.md)，这里只记决定。
+
+- **D28 验证的规矩**：用户定的：不动主目录，不启动或替换在用的 GameSnap，真实 `%APPDATA%\GameSnap` 只读，不发真实按键（SendInput），不改 DualSense 设置，
+  不启动用户的游戏和软件，不合并 PR #1、不推送 main。c8eb75a 上 quick 31/31、all 36/36，云端跑不了的测试都第一次在 Windows 上通过。
+- **D29 P1–P6**：手动测试发现 L4 在真机上没修好（P6），验证风险时发现 P1–P5。用户要求依次修，2f58279。P2 第 2 步（读不出来也没另存上时不写回、弹窗提醒）
+  超出原来的范围，用户决定保留。P4 只修轮转，同时写的竞争可以接受。
+- **D30 M9 升级**：用户同意后 Pillow 12.3.0 → 13.0.0，下限 `pillow>=13.0`。同样输入下解码、缩放、图标、提示卡片、PNG 新旧版本逐字节相同。
+- **D31 P7**：修完实际启动时发现：退出的那一刻托盘菜单开着，`WM_QUIT` 被菜单的模态循环吃掉，进程不结束、占着单实例。旧代码也一样。
+  修法是退出看门狗（`start_exit_watchdog`，3 秒后直接结束进程），没动 pystray；只在 `main()` 里挂，单元测试的 App 不开。
+- **D32 Q1 不修**：真实菜单上测了 5 种情况，`DestroyMenu` 不崩、不失效、不漏，只是开着的菜单内容旧了。
+- **D33 按键名**：F13–F24、小键盘、媒体键直接写名字（`_FIXED_NAMES`），用户同意。巴西键盘的 ABNT 键没写。
+- **D34 两个旧的偶发失败**：add_game 的计时上限差一个时钟刻度；games_update 的 WinError 1410（`id(icon)` 复用）。都不是这次改动带来的，顺手修了测试。
+- **D35 手动项尽量自动做**：M-08、M-11、M-15、M-17、M-19、M-26、M-29、M-30 改成脚本验证，M-27 用真实那局的数据。
+  没用 computer use，也没弹 UAC，能用它代测的标在 05 开头 C，必须用户做的在 05 开头 B（M-07 合并前必做，M-25 合并后必做）。
+- **D36 提交**：用户要求提交到 `claude/review-fixes`。PR #1 没合并，main 没动，主目录的正式版还是旧代码。
+
+### Windows 验证的最终状态
+
+quick 33/33（连跑 3 次），打包 92 个文件 42 MB，all 39/39（容器外，140 秒）。只在这台 Windows 上跑过：100% 单屏、键盘布局 0x8040804、普通权限。

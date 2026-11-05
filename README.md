@@ -100,6 +100,7 @@ GameSnap 不常驻，玩之前得把它打开。嫌每次手动开麻烦，就�
   - 启动器（`HYP.exe`）开着就一直等：下载大版本更新时间再长、游戏关了待会儿还要再进，都不会提前退出；
   - 玩过游戏后，名单里的游戏（包括云·原神客户端和 yuzu）和启动器全部关掉，再等 10 秒才退出，只关掉其中一个不会退出；
   - 刚启动时如果既没有游戏也没有启动器，等 60 秒后退出。
+  - 到了该退出的时候托盘菜单正开着，也照样退出：最多多等 3 秒，菜单跟着消失，日志里多一行说明。
   - 如果你习惯把启动器留在托盘里，GameSnap 也会一直在。这时它只占约 1.4MB 内存，CPU 几乎为 0。
 - **只在游戏窗口里拦截 `**：切到微信、浏览器、代码编辑器时，` 照常能打出来（「添加游戏…」等你按键的那 15 秒除外）。
 - **按下即抓**：截到的是按键后第一次上屏的那一帧，实测比按键晚 7–13ms，不超过 2 帧。刚从别的窗口切回游戏就按，也只晚约 25ms。每张 PNG 的元数据里都记录了这个时间差，日志里也有。
@@ -185,11 +186,11 @@ D:\anaconda3\envs\gamesnap-build\python.exe -X utf8 tests\run_tests.py   # 跑�
 
 ## 旧版备份
 
-`backup\v1_onefile_dxcam\` 里是改版前的单文件 `GameSnap.exe` 和源码。那一版用 dxcam 截图，游戏中约占 105MB。要退回旧版，把六个快捷方式（桌面和开始菜单里各三个）的目标都改成那里的 `GameSnap.exe` 即可。
+`backup\v1_onefile_dxcam\` 里是改版前的单文件 `GameSnap.exe` 和源码。那一版用 dxcam 截图，游戏中约占 105MB。要退回旧版，把七个快捷方式（桌面和开始菜单里各三个，开始菜单另有一个 `GameSnap.lnk`）的目标都改成那里的 `GameSnap.exe` 即可。
 
-`backup\v2_wgc_close_session\` 里是 2026-10-29 修复前的文件夹版（`GameSnap\GameSnap.exe`）和源码。那一版游戏切走或退出时会关闭截图会话，偶尔因此崩溃。要退回这一版，把六个快捷方式的目标都改成那里的 `GameSnap\GameSnap.exe` 即可。
+`backup\v2_wgc_close_session\` 里是 2026-10-29 修复前的文件夹版（`GameSnap\GameSnap.exe`）和源码。那一版游戏切走或退出时会关闭截图会话，偶尔因此崩溃。要退回这一版，把七个快捷方式的目标都改成那里的 `GameSnap\GameSnap.exe` 即可。
 
-`backup\v3_wgc_keep_session\` 里是 2026-10-30 加 DualSense 功能之前的文件夹版（`GameSnap\GameSnap.exe`）和源码。要退回这一版，同样把六个快捷方式的目标都改成那里的 `GameSnap\GameSnap.exe`。只是不想要 DualSense 功能的话，不用退回，在托盘菜单里关掉即可。
+`backup\v3_wgc_keep_session\` 里是 2026-10-30 加 DualSense 功能之前的文件夹版（`GameSnap\GameSnap.exe`）和源码。要退回这一版，同样把七个快捷方式的目标都改成那里的 `GameSnap\GameSnap.exe`。只是不想要 DualSense 功能的话，不用退回，在托盘菜单里关掉即可。
 
 `backup\v4_dualsense\` 里是 2026-10-31 加 yuzu 之前的文件夹版（`GameSnap\GameSnap.exe`）和源码。退回这一版后 yuzu 照样能截（yuzu 写在 config.json 的游戏名单里），只是截图都放进 `GameShots\yuzu\`，不按游戏分。
 
