@@ -4,8 +4,12 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import math
 import os
+import shutil
 import threading
+import time
+from datetime import datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -46,35 +50,155 @@ DEFAULTS: dict = {
 }
 
 
+_BOOL_KEYS = ("copy_to_clipboard", "toast", "sound", "dualsense_quad")
+_MIN_SEC = {"poll_interval_sec": 0.1, "exit_grace_sec": 0, "wait_no_launcher_sec": 0}   # 秒数的下限
+
+
+def _is_int(v) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _valid_hotkey(v) -> bool:
+    if not isinstance(v, dict):
+        return False
+    if v.get("type") == "key":
+        return _is_int(v.get("vk")) and 1 <= v["vk"] <= 254
+    if v.get("type") == "mouse":
+        return _is_int(v.get("button")) and v["button"] in (4, 5)
+    return False
+
+
+def _checked(key: str, value):
+    """返回 (要用的值, 问题)；值合法时问题为 None。不合法就用默认值；games / launchers 只去掉不对的那几项。"""
+    default = DEFAULTS[key]
+    if key in _BOOL_KEYS:
+        if isinstance(value, bool):
+            return value, None
+        if _is_int(value) and value in (0, 1):   # 以前按真假值用，0 / 1 照旧
+            return bool(value), None
+        return default, "应为 true 或 false"
+    if key in _MIN_SEC:
+        low = _MIN_SEC[key]
+        if (_is_int(value) or isinstance(value, float)) and math.isfinite(value) and value >= low:
+            return value, None
+        return default, f"应为不小于 {low} 的秒数"
+    if key == "save_dir":
+        return (value, None) if isinstance(value, str) else (default, "应为文件夹路径字符串，留空 = 图片\\GameShots")
+    if key == "hotkey":
+        return (value, None) if _valid_hotkey(value) else (default, "建议用托盘菜单「更换截图键…」改")
+    if key == "launchers":
+        if not isinstance(value, list):
+            return default, "应为进程名列表"
+        kept = [n for n in value if isinstance(n, str) and n]
+        return kept, None if len(kept) == len(value) else "去掉了不是进程名的项"
+    if key == "games":
+        if not isinstance(value, dict):
+            return default, '应为 {"进程名.exe": "文件夹名"}'
+        kept = {k: v for k, v in value.items() if k and isinstance(v, str)}
+        return kept, None if len(kept) == len(value) else "去掉了进程名为空或文件夹名不是字符串的项"
+    return value, None
+
+
 class Config:
     def __init__(self, path: Path = CONFIG_PATH) -> None:
         self.path = path
         self._lock = threading.Lock()
+        self.on_save_error = None   # 重试后仍没保存上时调用（App 用它提示），见 save()
+        self.read_only = False      # 启动时读不出来、也没另存上：这次运行不写回，否则原文件就找不回来了
         self.data = copy.deepcopy(DEFAULTS)
         if path.exists():
             try:
-                loaded = json.loads(path.read_text(encoding="utf-8"))
+                loaded = json.loads(self._read_text())
+                if not isinstance(loaded, dict):
+                    raise ValueError(f"顶层应该是 {{...}}，实际是 {type(loaded).__name__}")
                 self.data.update(loaded)
             except Exception:
                 log.exception("配置文件读取失败，使用默认配置：%s", path)
+                self.read_only = not self._keep_unreadable()
+            else:
+                self._check_values()
         else:
             self.save()
+
+    def _read_text(self, retries: int = 5) -> str:
+        """杀毒软件、同步盘短暂独占 config.json 时读取会抛 PermissionError：隔 0.2 秒重试几次，和 save() 一样，
+        不然这次运行用默认配置，之后一次保存就把游戏名单盖掉了（docs/review/05-windows-verification.md P2）。
+        utf-8-sig：带 BOM 的也能读（PowerShell 5.1 的 Set-Content -Encoding UTF8、记事本「UTF-8 带 BOM」）。"""
+        for _ in range(retries - 1):
+            try:
+                return self.path.read_text(encoding="utf-8-sig")
+            except OSError:
+                time.sleep(0.2)
+        return self.path.read_text(encoding="utf-8-sig")
+
+    def _keep_unreadable(self, kind: str = "unreadable", what: str = "读不出来的配置文件") -> bool:
+        """读不出来的配置文件先另存一份：之后任何 set() 都会用默认配置覆盖它，
+        用户手改时多了个逗号，游戏名单、截图键就全没了（docs/review/02-findings.md H2）。返回是否另存上了。"""
+        backup = self.path.with_name(f"{self.path.stem}.{kind}_{datetime.now():%Y%m%d_%H%M%S}{self.path.suffix}")
+        try:
+            shutil.copy2(self.path, backup)
+            log.warning("%s另存为 %s，改好后改回 %s 即可", what, backup, self.path.name)
+            return True
+        except OSError:
+            log.exception("另存%s失败", what)
+            return False
+
+    def _check_values(self) -> None:
+        """逐键检查类型和范围（docs/review/02-findings.md M5）。以前照单全收：轮询间隔写成 0 会忙等，
+        写成 null 进程检测线程就死掉、不再自动退出，games 写成 null 一启动就崩。不合法的回退默认值并记日志；
+        有改动时先把原文件另存一份，理由同 _keep_unreadable。"""
+        changed = False
+        for key in DEFAULTS:
+            value, problem = _checked(key, self.data[key])
+            if problem:
+                log.warning("配置项 %s 的值 %r 不合法（%s），改用 %r", key, self.data[key], problem, value)
+                changed = True
+            self.data[key] = value
+        if changed:
+            self._keep_unreadable("invalid", "有不合法值的配置文件")
 
     def __getitem__(self, key: str):
         return self.data[key]
 
-    def set(self, key: str, value) -> None:
+    def set(self, key: str, value) -> bool:
+        """改一项并保存；返回是否保存上了（内存里总是新值）。"""
         with self._lock:
             self.data[key] = value
+        return self.save()
+
+    def update(self, key: str, change) -> None:
+        """在锁里读出旧值、算出新值、写回，再保存。游戏名单要用它改：「添加游戏」和「移除游戏」以前各自
+        读 → 改 → set()，同时发生时后写的会盖掉先写的（docs/review/02-findings.md L17）。change 要返回新对象，不要原地改。"""
+        with self._lock:
+            self.data[key] = change(self.data[key])
         self.save()
 
-    def save(self) -> None:
-        with self._lock:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2),
-                           encoding="utf-8")
-            os.replace(tmp, self.path)
+    def save(self, retries: int = 5) -> bool:
+        """写回 config.json；返回是否保存上了。杀毒软件、同步盘短暂占着文件时 os.replace 会抛 PermissionError：
+        以前直接抛出去，调用方后面的步骤全被打断（更换截图键后监听没换新键、钩子不摘、托盘不刷新）。
+        现在隔 0.2 秒重试几次，仍失败就记日志、调用 on_save_error，不抛异常（docs/review/02-findings.md L18）。"""
+        if self.read_only:
+            log.warning("启动时读不出来也没另存上，这次运行不写回，设置没保存：%s", self.path)
+            if self.on_save_error is not None:
+                self.on_save_error()
+            return False
+        for attempt in range(retries):
+            try:
+                with self._lock:
+                    self.path.parent.mkdir(parents=True, exist_ok=True)
+                    tmp = self.path.with_suffix(".tmp")
+                    tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2),
+                                   encoding="utf-8")
+                    os.replace(tmp, self.path)
+                return True
+            except OSError:
+                if attempt == retries - 1:
+                    log.exception("配置文件保存失败：%s", self.path)
+                    if self.on_save_error is not None:
+                        self.on_save_error()
+                    return False
+                time.sleep(0.2)
+        return False
 
     def games_lower(self) -> dict[str, str]:
         return {k.lower(): v for k, v in self.data["games"].items()}

@@ -15,11 +15,11 @@ import logging
 import threading
 from typing import Callable
 
-from capture import qpc_now
+from capture import QPC_FREQ, qpc_now
 from watcher import foreground
 from winapi import (
     LRESULT, WM_APP, WM_CLOSE, WM_DESTROY, WM_INPUT, WNDPROC, WS_EX_TOOLWINDOW,
-    create_window, kernel32, message_loop, user32,
+    create_window, kernel32, message_loop, unique_class_name, unregister_class, user32,
 )
 
 log = logging.getLogger(__name__)
@@ -37,7 +37,31 @@ RIDEV_REMOVE = 0x00000001
 RIDEV_INPUTSINK = 0x00000100
 RI_MOUSE_BUTTON_4_DOWN = 0x0040
 RI_MOUSE_BUTTON_5_DOWN = 0x0100
-MAPVK_VK_TO_VSC, MAPVK_VK_TO_CHAR = 0, 2
+MAPVK_VK_TO_VSC, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC_EX = 0, 2, 4
+# PgUp PgDn End Home ← ↑ → ↓ Insert Delete：MAPVK_VK_TO_VSC_EX 不一定带 0xE0 前缀（本机键盘布局 0x8040804 的
+# Home 返回 0x47），不加扩展键标志就显示成小键盘的「Num 7」（docs/review/05-windows-verification.md P6）
+_EXTENDED_VKS = frozenset({0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E})
+# 这几个键 MAPVK_VK_TO_VSC_EX 的结果换算不出自己的名字，直接写 GetKeyNameTextW 要的（扫描码, 是否扩展键）
+_NAME_SCANS = {
+    0x13: (0x45, False),   # Pause：返回 0xE11D，低字节是 Right Ctrl 的扫描码
+    0x2C: (0x37, True),    # Print Screen：返回 0x54，是 Sys Req
+    0x90: (0x45, True),    # Num Lock：返回 0x45，不加标志是 Pause
+}
+# 系统给不出能用的名字，直接写：F13–F24 的 GetKeyNameTextW 返回空；小键盘数字和运算符 MAPVK_VK_TO_CHAR 有字符，
+# 和主键盘同名；媒体键、浏览器键的扫描码去掉 0xE0 前缀是字母键，静音会显示成 D（05-windows-verification.md）
+_FIXED_NAMES = {
+    **{0x7C + i: f"F{13 + i}" for i in range(12)},
+    **{0x60 + i: f"Num {i}" for i in range(10)},
+    0x6A: "Num *", 0x6B: "Num +", 0x6D: "Num -", 0x6E: "Num .", 0x6F: "Num /",
+    0xA6: "浏览器后退", 0xA7: "浏览器前进", 0xA8: "浏览器刷新", 0xA9: "浏览器停止",
+    0xAA: "浏览器搜索", 0xAB: "浏览器收藏", 0xAC: "浏览器主页",
+    0xAD: "静音键", 0xAE: "音量减", 0xAF: "音量加",
+    0xB0: "下一首", 0xB1: "上一首", 0xB2: "停止播放", 0xB3: "播放 / 暂停",
+    0xB4: "邮件键", 0xB5: "媒体选择键", 0xB6: "应用键 1", 0xB7: "应用键 2",
+}
+# 截图键按下后这么久没再收到它的按下事件，就不算「按住不放」：抬起事件可能丢了（L1）。
+# 系统的按键重复延迟最长 1 秒，之后约每 33ms 重复一次，所以真按住时不会隔这么久
+HELD_STALE_SEC = 1.5
 WM_APP_REFRESH_RAW = WM_APP + 1
 
 
@@ -100,12 +124,22 @@ def key_name(binding: dict) -> str:
     if binding.get("type") == "mouse":
         return "鼠标侧键（后退）" if binding.get("button") == 4 else "鼠标侧键（前进）"
     vk = int(binding.get("vk", 0))
+    if vk in _FIXED_NAMES:
+        return _FIXED_NAMES[vk]
     ch = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_CHAR) & 0x7FFF
     if ch and chr(ch).isprintable() and not chr(ch).isspace():
         return chr(ch)
     buf = ctypes.create_unicode_buffer(64)
-    scan = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)
-    if user32.GetKeyNameTextW(scan << 16, buf, 64):
+    if vk in _NAME_SCANS:
+        scan, extended = _NAME_SCANS[vk]
+    else:
+        vsc = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC_EX)
+        # 0xE0 前缀还要看：Left Windows、Right Ctrl 这些靠它区分（02-findings L4）
+        scan, extended = vsc & 0xFF, vk in _EXTENDED_VKS or vsc & 0xFF00 == 0xE000
+    lparam = scan << 16
+    if extended:
+        lparam |= 1 << 24
+    if user32.GetKeyNameTextW(lparam, buf, 64):
         return buf.value
     return f"VK {vk:#04x}"
 
@@ -124,10 +158,13 @@ class InputListener(threading.Thread):
         self._on_learned = on_learned           # 学到的新绑定；None 表示取消
         self._learning = False
         self._held = False            # 绑定键正按着（用于忽略自动重复）
+        self._held_at = 0             # 最近一次收到绑定键按下事件的 QPC 时刻
         self._held_swallowed = False  # 这次按下是否被吞掉（抬起时也要吞）
         self._swallow_up_vk = None    # 学习模式吞掉的键，其抬起也吞掉
         self._raw_registered = False
         self._hwnd = 0
+        self._failed = False          # run() 里建窗口或挂钩子失败
+        self._class_name = unique_class_name("GameSnapInput")   # 每个监听一个窗口类，见 winapi.unique_class_name
         self._ready = threading.Event()
         # ctypes 回调必须保持引用，否则会被回收导致崩溃
         self._wndproc = WNDPROC(self._proc)
@@ -137,10 +174,12 @@ class InputListener(threading.Thread):
     # ---------- 对外（任意线程） ----------
     def set_binding(self, binding: dict) -> None:
         self.binding = dict(binding)
+        self._held = False   # 旧键的抬起不会再匹配，不清掉的话新键第一次按下会被当成自动重复（L1）
         self._post(WM_APP_REFRESH_RAW)
 
     def start_learning(self) -> None:
         self._learning = True
+        self._held = False   # 同上：学键时按着的键，它的抬起被学键吞掉了
         self._post(WM_APP_REFRESH_RAW)
 
     def cancel_learning(self) -> None:
@@ -152,7 +191,8 @@ class InputListener(threading.Thread):
         self.join(timeout=2)
 
     def wait_ready(self, timeout: float = 2) -> bool:
-        return self._ready.wait(timeout)
+        """True = 已就绪；False = 启动失败（线程随即结束），或者 timeout 内还没就绪（02-findings M4）。"""
+        return self._ready.wait(timeout) and not self._failed
 
     def _post(self, msg: int) -> None:
         if self._ready.wait(2) and self._hwnd:
@@ -162,17 +202,25 @@ class InputListener(threading.Thread):
     def run(self) -> None:
         kb_hook = we_hook = None
         try:
-            self._hwnd = create_window("GameSnapInput", self._wndproc, WS_EX_TOOLWINDOW)
+            self._hwnd = create_window(self._class_name, self._wndproc, WS_EX_TOOLWINDOW)
             kb_hook = user32.SetWindowsHookExW(WH_KEYBOARD_LL, self._kb_proc_c,
                                                kernel32.GetModuleHandleW(None), 0)
             if not kb_hook:
                 raise ctypes.WinError(ctypes.get_last_error())
             we_hook = user32.SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
                                              None, self._we_proc_c, 0, 0, WINEVENT_OUTOFCONTEXT)
+            if not we_hook:   # 截图键照样能用，但前台切换收不到、不会提前准备截图会话：留个痕迹（02-findings L3）
+                log.warning("SetWinEventHook 失败 err=%d：切到游戏时不会提前准备截图会话，第一张截图会慢一些",
+                            ctypes.get_last_error())
             self._refresh_raw()
             log.info("按键监听已启动")
         except Exception:
             log.exception("按键监听启动失败")
+            self._failed = True
+            if kb_hook:   # 挂上一半的钩子拆掉，不留给没有消息循环的线程
+                user32.UnhookWindowsHookEx(kb_hook)
+            if we_hook:
+                user32.UnhookWinEvent(we_hook)
             self._ready.set()
             return
         self._ready.set()
@@ -180,6 +228,7 @@ class InputListener(threading.Thread):
         user32.UnhookWindowsHookEx(kb_hook)
         if we_hook:
             user32.UnhookWinEvent(we_hook)
+        unregister_class(self._class_name)   # 窗口在 WM_CLOSE 里已销毁
         log.info("按键监听已停止")
 
     def _proc(self, hwnd, msg, wparam, lparam):
@@ -229,9 +278,12 @@ class InputListener(threading.Thread):
         if b.get("type") != "key" or vk != b.get("vk"):
             return False
         if down:
-            if self._held:                 # 按住不放产生的自动重复
+            if self._held and t_key - self._held_at <= HELD_STALE_SEC * QPC_FREQ:   # 按住不放产生的自动重复
+                self._held_at = t_key
                 return self._held_swallowed
+            # 新按下；或者「按着」的状态已经过时（抬起事件丢了：安全桌面、别的钩子吞掉），以前会一直当成自动重复（L1）
             self._held = True
+            self._held_at = t_key
             hwnd, pid = foreground()
             self._held_swallowed = self._should_capture(pid)
             if self._held_swallowed:

@@ -12,6 +12,7 @@ import ctypes
 import ctypes.wintypes as wt
 import logging
 import threading
+import time
 from typing import Callable
 
 log = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ MUTEX_NAME = "Local\\GameSnap_SingleInstance"
 ELEVATED_NAME = "Local\\GameSnap_Elevated"   # 正在运行的实例有管理员权限时才存在
 QUIT_EVENT_NAME = "Local\\GameSnap_Quit"
 TAKEOVER_TIMEOUT_MS = 8000
+OPEN_QUIT_RETRY_SEC = 3   # 接管时旧实例的退出信号可能还没建好（旧版要等 App 建好才建），重试这么久
 _SDDL_OPEN_TO_ALL = "D:(A;;GA;;;WD)S:(ML;;NW;;;LW)"
 
 ERROR_ACCESS_DENIED = 5
@@ -51,6 +53,7 @@ _k32.CreateEventW.argtypes = [_LPSA, wt.BOOL, wt.BOOL, wt.LPCWSTR]
 _k32.OpenEventW.restype = wt.HANDLE
 _k32.OpenEventW.argtypes = [wt.DWORD, wt.BOOL, wt.LPCWSTR]
 _k32.SetEvent.argtypes = [wt.HANDLE]
+_k32.ResetEvent.argtypes = [wt.HANDLE]
 _k32.WaitForSingleObject.restype = wt.DWORD
 _k32.WaitForSingleObject.argtypes = [wt.HANDLE, wt.DWORD]
 _k32.CloseHandle.argtypes = [wt.HANDLE]
@@ -78,6 +81,25 @@ class Instance:
         # 拒绝访问：正在运行的是旧版建的（只有管理员能打开），也当作已在运行
         self.already_running = err in (ERROR_ALREADY_EXISTS, ERROR_ACCESS_DENIED) or not self._mutex
         self._marks: list[int] = []
+        self._quit_event = None
+        if not self.already_running:
+            self._announce()
+
+    def _announce(self) -> None:
+        """拿到互斥体后立即标明自己的权限、建好「请退出」信号（02-findings M8）。以前要等 App 建好、serve() 时才建，
+        这期间到达的管理员新实例 OpenEventW 失败就放弃接管。信号是自动复位事件，serve() 开始等之前收到的也不会丢。"""
+        if self.elevated:
+            self._marks.append(_k32.CreateMutexW(ctypes.byref(self._sa), False, ELEVATED_NAME))
+        ctypes.set_last_error(0)
+        ev = _k32.CreateEventW(ctypes.byref(self._sa), False, False, QUIT_EVENT_NAME)
+        if not ev:
+            log.error("创建退出信号失败 err=%d，将无法被管理员权限的实例接管", ctypes.get_last_error())
+            return
+        if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
+            # 接管时被换下的实例还没完全退出，打开的是它那个、上面可能还留着发给它的信号：清掉，免得一开始等就关掉自己
+            _k32.ResetEvent(ev)
+        self._marks.append(ev)
+        self._quit_event = ev
 
     def other_is_elevated(self) -> bool:
         h = _k32.OpenMutexW(SYNCHRONIZE, False, ELEVATED_NAME)
@@ -90,7 +112,12 @@ class Instance:
 
     def take_over(self) -> bool:
         """让正在运行的实例退出，等它放开互斥体。成功后本实例就是唯一的那个。"""
-        ev = _k32.OpenEventW(EVENT_MODIFY_STATE, False, QUIT_EVENT_NAME)
+        deadline = time.monotonic() + OPEN_QUIT_RETRY_SEC
+        while True:
+            ev = _k32.OpenEventW(EVENT_MODIFY_STATE, False, QUIT_EVENT_NAME)
+            if ev or time.monotonic() >= deadline:
+                break
+            time.sleep(0.1)   # 正在运行的实例刚启动、还没建好信号
         if not ev:
             log.error("打不开退出信号 err=%d", ctypes.get_last_error())
             return False
@@ -99,19 +126,17 @@ class Instance:
         r = _k32.WaitForSingleObject(self._mutex, TAKEOVER_TIMEOUT_MS)
         if r in (WAIT_OBJECT_0, WAIT_ABANDONED):
             self.already_running = False
+            self._announce()
             return True
         log.error("正在运行的 GameSnap 在 %d 秒内没有退出（Wait 返回 %#x）", TAKEOVER_TIMEOUT_MS // 1000, r)
         return False
 
     def serve(self, on_quit: Callable[[], None]) -> None:
-        """作为正在运行的实例：标明自己的权限，并在后台等待“请退出”信号（由有管理员权限的新实例发出）。"""
-        if self.elevated:
-            self._marks.append(_k32.CreateMutexW(ctypes.byref(self._sa), False, ELEVATED_NAME))
-        ev = _k32.CreateEventW(ctypes.byref(self._sa), False, False, QUIT_EVENT_NAME)
+        """作为正在运行的实例，在后台等待“请退出”信号（由有管理员权限的新实例发出）。
+        要等程序能正常退出了（托盘已进入消息循环）再调：之前收到的信号留在事件里，开始等时立即送到。"""
+        ev = self._quit_event
         if not ev:
-            log.error("创建退出信号失败 err=%d，将无法被管理员权限的实例接管", ctypes.get_last_error())
-            return
-        self._marks.append(ev)
+            return   # 没建成，_announce 已记日志
 
         def wait() -> None:
             if _k32.WaitForSingleObject(ev, INFINITE) == WAIT_OBJECT_0:

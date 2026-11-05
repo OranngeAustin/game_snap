@@ -6,7 +6,7 @@
   退出   —— 游戏和启动器都关掉若干秒后，GameSnap 自己退出
 同一时间只运行一个 GameSnap，规则见 instance.py。
 运行期间顺带照看 DualSense 手柄的声音设置（原神的手柄震动要求四声道），见 dualsense.py。
-运行：python main.py [--launch 启动器.exe [--launch-args 参数]] [--no-elevate] [--console]
+运行：python main.py [--launch 启动器.exe [--launch-args 参数]] [--no-elevate] [--console] [--config 配置文件]
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import argparse
 import ctypes
 import ctypes.wintypes as wt
 import faulthandler
+import functools
 import logging
 import os
 import queue
@@ -53,6 +54,7 @@ CRASH_LOG = APP_DIR / "crash.log"
 LEARN_TIMEOUT_SEC = 10
 ADD_TIMEOUT_SEC = 15     # 「添加游戏」等用户在游戏里按截图键的时间
 TRIM_INTERVAL_SEC = 60   # 等待进游戏时，每隔这么久把闲置内存页交还系统
+EXIT_WATCHDOG_SEC = 3    # 退出时等托盘消息循环结束的时间，过了就直接结束进程（见 start_exit_watchdog）
 
 _psapi = ctypes.WinDLL("psapi")
 _psapi.EmptyWorkingSet.argtypes = [wt.HANDLE]
@@ -137,12 +139,16 @@ class CaptureWorker(threading.Thread):
 class App:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
+        # 设置重试后仍没写进 config.json（文件被占用）：提示一下，程序照常往下走（L18）
+        cfg.on_save_error = lambda: self.toast.show("设置没保存上（config.json 被占用），详见日志", False,
+                                                    primary_rect(), 3000)
         self.games: dict[int, str] = {}   # 正在运行的游戏 {pid: 显示名}
         self.paused = False
         self.shot_count = 0
         self.listener: InputListener | None = None
         self._listener_lock = threading.Lock()
         self._learn_timer: threading.Timer | None = None
+        self._learn_lock = threading.Lock()   # 学到的键和超时可能同时到（L2）
         self.learning = False
         self.adding = False                  # 「添加游戏」：在等用户到游戏里按截图键
         self._add_lock = threading.Lock()
@@ -154,13 +160,17 @@ class App:
         self._idle_since = time.monotonic()  # 从这时起既没有游戏也没有启动器
         self._next_trim = time.monotonic() + 4   # 启动后几秒、初始化都做完了再第一次修剪
         self._quitting = False
+        self._tray_lock = threading.Lock()   # refresh_tray 会被多个线程调用，pystray 自己不加锁（M6）
+        self._tray_state = "idle"            # 托盘上现在显示的图标
+        self.on_tray_ready = None            # 托盘就绪后调用（main 在这时才开始等单实例的退出信号，M8）
+        self.on_quitting = None              # 让托盘退出之前调用（main 在这时开始退出看门狗）
 
         self.toast = Toast()
         self.worker = CaptureWorker(self)
         self.watcher = GameWatcher(cfg.games_lower, cfg.launchers_lower,
                                    lambda: float(cfg["poll_interval_sec"]), self.on_poll)
         self.dualsense = DualSenseGuard(lambda: cfg["dualsense_quad"], self._on_dualsense)
-        self.icon = pystray.Icon("GameSnap", make_icon("idle"), "GameSnap", self._menu())
+        self.icon = pystray.Icon("GameSnap", make_icon(self._tray_state), "GameSnap", self._menu())
 
     def run(self) -> None:
         self.toast.start()
@@ -175,6 +185,14 @@ class App:
         self.refresh_tray()
         self.watcher.start()
         self.dualsense.start()
+        if self.on_tray_ready is not None:
+            self.on_tray_ready()
+        if self.cfg.read_only:
+            # 单独一个线程：对话框没人点时不拖住这个 setup 线程，icon.stop() 退出时要等它（等到 pystray 的超时才放行）
+            threading.Thread(target=message_box, name="ReadOnlyNotice", daemon=True, args=(
+                f"配置文件现在读不出来（可能被别的程序占着），也没能另存一份：\n{self.cfg.path}\n\n"
+                "这次用默认配置运行，游戏名单是默认的，设置也不会保存，原文件不会被改动。\n"
+                "请退出 GameSnap，等占着它的程序结束后再打开。",)).start()
 
     # ---------- 状态 ----------
     def should_capture(self, pid: int) -> bool:
@@ -213,31 +231,49 @@ class App:
         self.games = games
         if games:
             log.info("检测到游戏：%s", ", ".join(f"{n}(pid {p})" for p, n in games.items()))
-            self._ensure_listener()
+            self._sync_listener()
             hwnd, pid = foreground()
             self.worker.post("warmup", hwnd)
             self.worker.post("fg", hwnd, pid)
         else:
             log.info("游戏已全部退出；启动器也关掉后 %d 秒，GameSnap 退出", self.cfg["exit_grace_sec"])
-            if not self.learning and not self.adding:
-                self._stop_listener()
+            self._sync_listener()   # 正在更换截图键、添加游戏时不摘
         self.refresh_tray()
 
     def _auto_quit(self, reason: str) -> None:
         log.info("自动退出：%s", reason)
         self._quit(self.icon, None)
 
-    def _ensure_listener(self) -> InputListener:
+    def _sync_listener(self) -> InputListener | None:
+        """按当前状态挂上或摘掉按键监听，返回挂着的那个（没挂时为 None）。
+        有游戏在运行、正在更换截图键或添加游戏时挂，否则摘。
+
+        「该不该挂」的判断和真正挂 / 摘在同一把锁里（02-findings M7）。改 games / learning / adding 的线程
+        改完都调一次这里，最后拿到锁的那次看到的是各线程都改完之后的状态。以前是锁外先判断、再进锁挂或摘，
+        中间别的线程可能刚开始用这个监听（更换截图键、添加游戏）或刚检测到游戏，结果监听被摘掉，
+        学键永远不结束、GameSnap 不再自动退出，或者这局游戏截图键没反应。"""
         with self._listener_lock:
-            if self.listener is None:
-                self.listener = InputListener(
+            want = bool(self.games) or self.learning or self.adding
+            if want and self.listener is None:
+                listener = InputListener(
                     self.cfg["hotkey"], self.should_capture,
                     on_shot=self._on_key,
                     on_foreground=lambda h, p: self.worker.post("fg", h, p),
                     on_learned=self._on_learned,
                 )
-                self.listener.start()
-                self.listener.wait_ready()
+                listener.start()
+                if not listener.wait_ready():
+                    listener.join(0.5)   # 启动失败时线程马上结束；只是启动得慢就还活着，照旧留着
+                    if not listener.is_alive():
+                        # 以前留着这个死掉的监听，截图键、学键、添加游戏都静默失效（02-findings M4）
+                        log.warning("按键监听没启动起来，截图键暂时无效；之后需要监听时"
+                                    "（检测到游戏、更换截图键、添加游戏）会再试")
+                        self.toast.show("按键监听没启动起来，截图键暂时无效，详见日志", False, primary_rect(), 3000)
+                        return None
+                self.listener = listener
+            elif not want and self.listener is not None:
+                self.listener.stop()
+                self.listener = None
             return self.listener
 
     def _stop_listener(self) -> None:
@@ -281,7 +317,12 @@ class App:
         if self.learning or self.adding:
             return
         self.learning = True
-        self._ensure_listener().start_learning()
+        listener = self._sync_listener()   # learning 已置位，挂上之后别的线程不会摘
+        if listener is None:               # 监听没启动起来（已提示），不进入学键状态
+            self.learning = False
+            self._sync_listener()
+            return
+        listener.start_learning()
         self.toast.show("请按下新的截图键或鼠标侧键（Esc 取消）", True, primary_rect(),
                         LEARN_TIMEOUT_SEC * 1000)
         self._learn_timer = threading.Timer(LEARN_TIMEOUT_SEC, self._learn_timeout)
@@ -289,19 +330,25 @@ class App:
         self._learn_timer.start()
 
     def _learn_timeout(self) -> None:
-        if self.learning and self.listener is not None:
-            self.listener.cancel_learning()
-            self._finish_learning(None)
+        if not self.learning:
+            return
+        listener = self.listener
+        if listener is not None:
+            listener.cancel_learning()
+        self._finish_learning(None)   # 监听不在了也要结束学键，否则 learning 一直是 True、不再自动退出
 
     def _on_learned(self, binding: dict | None) -> None:
         # 在监听线程里被调用：保存配置等耗时操作挪到别的线程
         threading.Thread(target=self._finish_learning, args=(binding,), daemon=True).start()
 
     def _finish_learning(self, binding: dict | None) -> None:
-        if not self.learning:
-            return
-        self.learning = False
-        self._idle_since = time.monotonic()   # 学键花的时间不算进“没进游戏”的等待里
+        with self._learn_lock:   # 按键和超时同时到时只算一次：以前既存了新键又提示「已取消」（02-findings L2）
+            if not self.learning:
+                return
+            # 学键花的时间不算进“没进游戏”的等待里。先设再清标志：反过来的话，GameWatcher 恰好在两行之间轮询，
+            # 会用旧的 _idle_since 判断，刚结束就自动退出（02-findings L16）
+            self._idle_since = time.monotonic()
+            self.learning = False
         if self._learn_timer is not None:
             self._learn_timer.cancel()
         if binding:
@@ -313,8 +360,7 @@ class App:
             winsound.MessageBeep(winsound.MB_OK)
         else:
             self.toast.show("已取消更换截图键", False, primary_rect(), 1500)
-        if not self.games:
-            self._stop_listener()
+        self._sync_listener()   # 没游戏、也没在添加游戏就摘掉
         self.refresh_tray()
 
     # ---------- 添加 / 移除游戏 ----------
@@ -326,7 +372,11 @@ class App:
         self._add_timer = threading.Timer(ADD_TIMEOUT_SEC, self._finish_adding, args=(0, 0, True))
         self._add_timer.daemon = True
         self.adding = True   # 计时器先建好：游戏开着时监听已在运行，置位后按键随时可能到
-        self._ensure_listener()
+        if self._sync_listener() is None:   # 监听没启动起来（已提示），不进入等待
+            self.adding = False
+            self._add_timer.cancel()
+            self._sync_listener()
+            return
         self._add_timer.start()
         self._add_hint(f"切到要添加的游戏里，按一下截图键 {key_name(self.cfg['hotkey'])}", True)
 
@@ -353,19 +403,18 @@ class App:
                 if not exe or lower in NOT_GAMES or lower in self.cfg.launchers_lower():
                     self._add_hint(f"这不是游戏窗口（{exe or '未知程序'}），请在游戏画面里按截图键", False)
                     return   # 接着等，直到超时
+            self._idle_since = time.monotonic()   # 等按键的时间不算进「没进游戏」的等待里；先设再清标志（L16）
             self.adding = False
             self._add_timer.cancel()
-            self._idle_since = time.monotonic()   # 等按键的时间不算进「没进游戏」的等待里
         known = self.cfg.games_lower().get(exe.lower()) if exe else None
         if exe is None:
             self.toast.show("没收到截图键，没有添加游戏", False, primary_rect(), 2000)
-            if not self.games and not self.learning:
-                self._stop_listener()
+            self._sync_listener()   # 没游戏、也没在更换截图键就摘掉
         elif known:
             self.toast.show(f"已经在名单里了 · {known}", True, primary_rect(), 2500)
         else:
             name = default_game_name(hwnd, exe)
-            self.cfg.set("games", {**self.cfg["games"], exe: name})
+            self.cfg.update("games", lambda games: {**games, exe: name})   # 和「移除游戏」同时改也不丢（L17）
             log.info("添加游戏：%s → %s", exe, name)
             self.toast.show(f"已添加 · {name}（{exe}）", True, primary_rect(), 3000)
         self.refresh_tray()
@@ -391,7 +440,7 @@ class App:
                                            "移除后在它里面按截图键不再截图。要加回来，用「添加游戏…」。"):
                 return
             # 换成新字典，不原地改：进程检测线程可能正在读旧的那个
-            self.cfg.set("games", {k: v for k, v in self.cfg["games"].items() if k != exe})
+            self.cfg.update("games", lambda games: {k: v for k, v in games.items() if k != exe})   # L17
             log.info("移除游戏：%s（%s）", exe, name)
             self.toast.show(f"已移除 · {name}（{exe}）", True, primary_rect(), 2500)
             self.refresh_tray()
@@ -419,11 +468,17 @@ class App:
         return "等待游戏启动…"
 
     def refresh_tray(self) -> None:
-        state = "paused" if self.paused else ("active" if self.games else "idle")
-        self.icon.icon = make_icon(state)
-        self.icon.title = (f"GameSnap · {self.status_text()}\n"
-                           f"截图键 {key_name(self.cfg['hotkey'])} · 本次已截 {self.shot_count} 张")
-        self.icon.update_menu()
+        """GameWatcher、Saver、Timer、学键 / 添加线程、托盘线程都会调。pystray 换图标（DestroyIcon / LoadImage /
+        Shell_NotifyIcon）、重建菜单都在调用线程里直接做、不加锁，所以整个刷新放进一把锁，状态在锁里算，
+        晚到的线程不会用旧状态盖掉新状态；图标状态没变就不重设（02-findings M6）。"""
+        with self._tray_lock:
+            state = "paused" if self.paused else ("active" if self.games else "idle")
+            if state != self._tray_state:
+                self.icon.icon = make_icon(state)
+                self._tray_state = state
+            self.icon.title = (f"GameSnap · {self.status_text()}\n"
+                               f"截图键 {key_name(self.cfg['hotkey'])} · 本次已截 {self.shot_count} 张")
+            self.icon.update_menu()
 
     def _toggle(self, key: str):
         def action(icon, item):
@@ -453,12 +508,23 @@ class App:
             return
         self._quitting = True
         log.info("退出")
-        self.watcher.stop()
-        self._stop_listener()
-        self.worker.post("quit")
-        self.worker.join(timeout=5)
-        self.toast.stop()
-        icon.stop()
+        try:
+            self.watcher.stop()
+            self._stop_listener()
+            self.worker.post("quit")
+            if self.worker.ident is not None:   # 还没启动的线程 join 会抛 RuntimeError
+                self.worker.join(timeout=5)
+            self.toast.stop()
+        except Exception:
+            log.exception("退出时出错")
+        finally:
+            # 前面哪一步出错都要让托盘退出：_quitting 已置位，否则托盘留着、「退出」也点不动（M8）
+            try:
+                if self.on_quitting:   # 在 icon.stop() 之前：它可能阻塞几秒，也可能抛异常
+                    self.on_quitting()
+            except Exception:
+                log.exception("退出时出错")
+            icon.stop()
 
     def _menu(self) -> pystray.Menu:
         I = pystray.MenuItem
@@ -484,7 +550,13 @@ class App:
 
 
 def make_icon(state: str) -> Image.Image:
-    """托盘图标：圆角方块 + 相机。灰=等待游戏，绿=工作中，橙=暂停。"""
+    """托盘图标：圆角方块 + 相机。灰=等待游戏，绿=工作中，橙=暂停。
+    每种状态只画一次（每张截图、每次状态变化都要刷新托盘），每次返回一份拷贝，调用方改了也不影响缓存。"""
+    return _draw_icon(state).copy()
+
+
+@functools.lru_cache(maxsize=None)
+def _draw_icon(state: str) -> Image.Image:
     bg = {"idle": (142, 142, 147), "active": (52, 199, 89), "paused": (255, 159, 10)}[state]
     s = 256
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
@@ -515,25 +587,55 @@ def relaunch_as_admin() -> bool:
     return rc > 32
 
 
+class AppendingLogHandler(RotatingFileHandler):
+    """轮转失败时接着往原文件追加（docs/review/05-windows-verification.md P4）。另一个 GameSnap 开着日志时 Windows 不让改名，
+    RotatingFileHandler 这时已经先删了旧的 .1，这一条日志也丢了，之后每一条都这样，直到对方退出。"""
+
+    def doRollover(self) -> None:
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+        try:
+            os.replace(self.baseFilename, f"{self.baseFilename}.1")   # 改名成功才换掉旧的 .1
+        except OSError:
+            pass   # 这里写不了日志；下一条再试
+        self.stream = self._open()
+
+
 def setup_logging(console: bool) -> None:
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-    handlers: list[logging.Handler] = [
-        RotatingFileHandler(LOG_PATH, maxBytes=1_000_000, backupCount=1, encoding="utf-8")]
+    """日志打不开（被别的程序禁写）时这次不写文件：不能因为日志让程序起不来，--launch 和单实例检查都在后面（05 P3）。"""
+    handlers: list[logging.Handler] = []
+    error = None
+    try:
+        APP_DIR.mkdir(parents=True, exist_ok=True)
+        handlers.append(AppendingLogHandler(LOG_PATH, maxBytes=1_000_000, backupCount=1, encoding="utf-8"))
+    except OSError as e:
+        error = e
     if console:
         handlers.append(logging.StreamHandler())
-    logging.basicConfig(level=logging.INFO, handlers=handlers,
+    logging.basicConfig(level=logging.INFO, handlers=handlers or [logging.NullHandler()],
                         format="%(asctime)s %(levelname)s %(threadName)s %(name)s: %(message)s")
     logging.getLogger("comtypes").setLevel(logging.WARNING)
+    if error is not None:
+        log.warning("日志文件打不开，这次不写日志：%s（%s）", LOG_PATH, error)
 
 
 def enable_crash_log():
     """原生代码崩溃（访问违例等）时，把各线程的 Python 调用栈追加写进 crash.log。
-    注意：驱动里被自己处理掉的访问违例也会记一笔，看到记录要对照 gamesnap.log 里进程是否真的退出了。"""
-    if CRASH_LOG.exists() and CRASH_LOG.stat().st_size > 1_000_000:
-        CRASH_LOG.unlink()
-    f = open(CRASH_LOG, "a", encoding="utf-8")
-    f.write(f"== {datetime.now():%Y-%m-%d %H:%M:%S} GameSnap 启动 pid {os.getpid()}\n")
-    f.flush()
+    注意：驱动里被自己处理掉的访问违例也会记一笔，看到记录要对照 gamesnap.log 里进程是否真的退出了。
+    删不掉、打不开时不崩溃（第一个实例开着它时第二个实例删不掉，05 P3）：删不掉就接着写，打不开就这次不记，返回 None。"""
+    try:
+        if CRASH_LOG.exists() and CRASH_LOG.stat().st_size > 1_000_000:
+            CRASH_LOG.unlink()
+    except OSError as e:
+        log.warning("crash.log 太大但删不掉，接着往里写：%s", e)
+    try:
+        f = open(CRASH_LOG, "a", encoding="utf-8")
+        f.write(f"== {datetime.now():%Y-%m-%d %H:%M:%S} GameSnap 启动 pid {os.getpid()}\n")
+        f.flush()
+    except OSError as e:
+        log.warning("crash.log 打不开，这次不记录崩溃调用栈：%s", e)
+        return None
     faulthandler.enable(f, all_threads=True)
     return f
 
@@ -559,6 +661,25 @@ def launch(path: str, params: str) -> None:
         message_box(f"没能启动：\n{path}")
     else:
         log.info("已启动：%s %s", path, params)
+
+
+def start_exit_watchdog(icon) -> None:
+    """退出时托盘菜单开着的话，pystray 让消息循环退出的 WM_QUIT 会被菜单的模态循环吃掉，主线程在菜单关掉后一直等在
+    GetMessage，走不到 main() 最后的 os._exit，进程就留下了（05 文档 P7）。到这一步该停的都停了：
+    到时间消息循环还没退出，就在这里结束进程。只在 main() 里用，测试里建的 App 不会把测试进程结束掉。"""
+
+    def force() -> None:
+        log.warning("消息循环 %d 秒内没有退出（多半是退出时托盘菜单开着），直接结束进程", EXIT_WATCHDOG_SEC)
+        try:
+            icon.visible = False   # 否则托盘上留个空图标，鼠标移过去才消失
+        except Exception:
+            log.exception("去掉托盘图标时出错")
+        logging.shutdown()
+        os._exit(0)
+
+    timer = threading.Timer(EXIT_WATCHDOG_SEC, force)
+    timer.daemon = True
+    timer.start()
 
 
 def main() -> None:
@@ -595,7 +716,10 @@ def main() -> None:
     log.info("管理员权限：%s", inst.elevated)
     try:
         app = App(Config(Path(args.config)) if args.config else Config())
-        inst.serve(on_quit=lambda: app._auto_quit("由新启动的 GameSnap（管理员权限）接管"))
+        # 退出信号在 Instance() 里就建好了；托盘进入消息循环、能正常退出之后才开始等它（02-findings M8）
+        app.on_tray_ready = lambda: inst.serve(
+            on_quit=lambda: app._auto_quit("由新启动的 GameSnap（管理员权限）接管"))
+        app.on_quitting = lambda: start_exit_watchdog(app.icon)
         app.run()
     except Exception:
         log.exception("GameSnap 异常退出")

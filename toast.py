@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes as wt
+import functools
 import logging
 import threading
 
@@ -17,7 +18,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont
 from winapi import (
     WM_APP, WM_CLOSE, WM_DESTROY, WM_TIMER, WNDPROC,
     WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
-    create_window, gdi32, message_loop, user32,
+    create_window, gdi32, message_loop, unique_class_name, unregister_class, user32,
 )
 
 log = logging.getLogger(__name__)
@@ -98,7 +99,15 @@ def _font(size: int) -> ImageFont.FreeTypeFont:
 
 
 def render_card(text: str, ok: bool, scale: float) -> Image.Image:
-    """画一张半透明圆角卡片：左边绿色✓/红色!圆标，右边文字。3 倍超采样抗锯齿。"""
+    """画一张半透明圆角卡片：左边绿色✓/红色!圆标，右边文字。3 倍超采样抗锯齿。
+    同样的参数只画一次（每张截图的提示都是同一句「已截图 · 游戏名」），每次返回一份拷贝。
+    缓存的是画好的小图（几十 KB）。不缓存字体对象：大号中文 TTC 每个字号要常驻约 3.5MB
+    （拿 16MB 的 wqy-zenhei.ttc 冒充 msyh.ttc 实测），见 docs/review/03-perf-plan.md P3。"""
+    return _render_card(text, ok, scale).copy()
+
+
+@functools.lru_cache(maxsize=4)
+def _render_card(text: str, ok: bool, scale: float) -> Image.Image:
     ss = 3
     k = scale * ss
     font = _font(round(15 * k))
@@ -143,6 +152,7 @@ class Toast(threading.Thread):
         self._lock = threading.Lock()
         self._pending: tuple[str, bool, tuple[int, int, int, int], int] | None = None
         self._hwnd = 0
+        self._class_name = unique_class_name("GameSnapToast")
         self._wndproc = WNDPROC(self._proc)
         self._memdc = None
         self._bitmap = None
@@ -168,7 +178,7 @@ class Toast(threading.Thread):
         try:
             ex = (WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
                   | WS_EX_TOPMOST | WS_EX_TOOLWINDOW)
-            self._hwnd = create_window("GameSnapToast", self._wndproc, ex)
+            self._hwnd = create_window(self._class_name, self._wndproc, ex)
             if not user32.SetWindowDisplayAffinity(self._hwnd, WDA_EXCLUDEFROMCAPTURE):
                 log.warning("SetWindowDisplayAffinity 失败，提示浮层可能会被截进图里")
         except Exception:
@@ -178,6 +188,7 @@ class Toast(threading.Thread):
         self._ready.set()
         message_loop()
         self._free_bitmap()
+        unregister_class(self._class_name)
 
     def _proc(self, hwnd, msg, wparam, lparam):
         try:
@@ -217,25 +228,36 @@ class Toast(threading.Thread):
         margin = round(24 * scale)
         x, y = rect[2] - w - margin, rect[1] + margin
 
-        self._free_bitmap()
-        screen = user32.GetDC(None)
-        self._memdc = gdi32.CreateCompatibleDC(screen)
-        bmi = BITMAPINFOHEADER(biSize=ctypes.sizeof(BITMAPINFOHEADER), biWidth=w,
-                               biHeight=-h, biPlanes=1, biBitCount=32, biCompression=0)
-        bits = ctypes.c_void_p()
-        self._bitmap = gdi32.CreateDIBSection(screen, ctypes.byref(bmi), 0,
-                                              ctypes.byref(bits), None, 0)
         data = _premultiplied_bgra(card)
-        ctypes.memmove(bits, data, len(data))
-        self._old_bmp = gdi32.SelectObject(self._memdc, self._bitmap)
+        self._free_bitmap()
+        # GDI 配额耗尽、内存不足时下面几个都可能返回 NULL：以前不查，memmove 写 0 地址，进程在游戏中途消失（02-findings M3）
+        screen = user32.GetDC(None)
+        if not screen:
+            log.warning("GetDC 失败，这次不显示提示：%s", text)
+            return
+        try:
+            self._memdc = gdi32.CreateCompatibleDC(screen)
+            bits = ctypes.c_void_p()
+            if self._memdc:
+                bmi = BITMAPINFOHEADER(biSize=ctypes.sizeof(BITMAPINFOHEADER), biWidth=w,
+                                       biHeight=-h, biPlanes=1, biBitCount=32, biCompression=0)
+                self._bitmap = gdi32.CreateDIBSection(screen, ctypes.byref(bmi), 0,
+                                                      ctypes.byref(bits), None, 0)
+            if not (self._memdc and self._bitmap and bits.value):
+                log.warning("建提示位图失败（GDI 资源不足？），这次不显示提示：%s", text)
+                self._free_bitmap()
+                return
+            ctypes.memmove(bits, data, len(data))
+            self._old_bmp = gdi32.SelectObject(self._memdc, self._bitmap)
 
-        self._alpha = self._max_alpha
-        blend = BLENDFUNCTION(0, 0, self._alpha, AC_SRC_ALPHA)
-        user32.UpdateLayeredWindow(self._hwnd, screen, ctypes.byref(wt.POINT(x, y)),
-                                   ctypes.byref(wt.SIZE(w, h)), self._memdc,
-                                   ctypes.byref(wt.POINT(0, 0)), 0,
-                                   ctypes.byref(blend), ULW_ALPHA)
-        user32.ReleaseDC(None, screen)
+            self._alpha = self._max_alpha
+            blend = BLENDFUNCTION(0, 0, self._alpha, AC_SRC_ALPHA)
+            user32.UpdateLayeredWindow(self._hwnd, screen, ctypes.byref(wt.POINT(x, y)),
+                                       ctypes.byref(wt.SIZE(w, h)), self._memdc,
+                                       ctypes.byref(wt.POINT(0, 0)), 0,
+                                       ctypes.byref(blend), ULW_ALPHA)
+        finally:
+            user32.ReleaseDC(None, screen)   # 中途出错也要还，不然屏幕 DC 泄漏
 
         user32.ShowWindow(self._hwnd, SW_SHOWNOACTIVATE)
         user32.SetWindowPos(self._hwnd, HWND_TOPMOST, 0, 0, 0, 0,

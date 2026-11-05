@@ -200,7 +200,8 @@ explorer = next((p for p, name in watcher.snapshot_names().items() if name == "e
 if explorer:
     text, ok, hold = press(0, explorer)
     check("explorer rejected", (ok, "explorer.exe" in text, app.adding), (False, True, True))
-    check("rejection hint lasts until the deadline", 1000 <= hold < 15000, True)
+    # time.monotonic 的精度约 15.6 ms：开始等和按键落在同一个刻度上时，剩余时间正好是 15000 ms
+    check(f"rejection hint lasts until the deadline ({hold} ms)", 1000 <= hold <= 15000, True)
 else:
     print("SKIP  no explorer.exe running")
 text, ok, _ = press(0, hyp.pid)

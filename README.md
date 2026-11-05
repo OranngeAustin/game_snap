@@ -41,7 +41,7 @@ dist\GameSnap\GameSnap.exe --launch "D:\miHoYo Launcher\launcher.exe"
 
 截图保存在 `图片\GameShots\<游戏名>\`，例如 `GameShots\原神\原神_2026-10-11_21-30-05.png`。
 
-yuzu 里的截图按正在玩的 Switch 游戏分文件夹。游戏名取自 yuzu 的窗口标题，和 yuzu 里显示的一样，例如 `GameShots\塞尔达传说 王国之泪\`；停在游戏列表时存到 `GameShots\yuzu\`。文件名里不能用的字符（如 `:`）会换成 `_`。
+yuzu 里的截图按正在玩的 Switch 游戏分文件夹。游戏名取自 yuzu 的窗口标题，和 yuzu 里显示的一样，例如 `GameShots\塞尔达传说 王国之泪\`；停在游戏列表时存到 `GameShots\yuzu\`。文件名里不能用的字符（如 `:`、控制字符）会换成 `_`；游戏名超过 80 个字符时截断；`CON`、`NUL` 这类 Windows 保留名前面加 `_`；只有点（如 `..`）的名字存到 `GameShots\未知游戏\`；结尾连续多个点和空格（如 `Loading...`）的去掉，结尾单个点不动。
 
 ## 托盘菜单
 
@@ -100,6 +100,7 @@ GameSnap 不常驻，玩之前得把它打开。嫌每次手动开麻烦，就�
   - 启动器（`HYP.exe`）开着就一直等：下载大版本更新时间再长、游戏关了待会儿还要再进，都不会提前退出；
   - 玩过游戏后，名单里的游戏（包括云·原神客户端和 yuzu）和启动器全部关掉，再等 10 秒才退出，只关掉其中一个不会退出；
   - 刚启动时如果既没有游戏也没有启动器，等 60 秒后退出。
+  - 到了该退出的时候托盘菜单正开着，也照样退出：最多多等 3 秒，菜单跟着消失，日志里多一行说明。
   - 如果你习惯把启动器留在托盘里，GameSnap 也会一直在。这时它只占约 1.4MB 内存，CPU 几乎为 0。
 - **只在游戏窗口里拦截 `**：切到微信、浏览器、代码编辑器时，` 照常能打出来（「添加游戏…」等你按键的那 15 秒除外）。
 - **按下即抓**：截到的是按键后第一次上屏的那一帧，实测比按键晚 7–13ms，不超过 2 帧。刚从别的窗口切回游戏就按，也只晚约 25ms。每张 PNG 的元数据里都记录了这个时间差，日志里也有。
@@ -144,6 +145,14 @@ PS5 手柄（DualSense）用 USB 连接玩原神时，手柄的声音设备要�
 
 配置文件在 `%APPDATA%\GameSnap\config.json`（第一次运行时生成）。手改时先退出 GameSnap（托盘菜单 → 退出），改完再打开。GameSnap 开着时改的话，它下次保存设置（切换菜单开关、添加或移除游戏）会把你改的覆盖掉。
 
+手改出错、文件读不出来（比如多了个逗号）时，GameSnap 用默认配置启动，并先把读不出来的那份另存为同一文件夹里的 `config.unreadable_<日期_时间>.json`，日志里也会记一笔。之后它保存设置时 `config.json` 会变回默认配置；把另存的那份改好，再改名回 `config.json`（先退出 GameSnap）即可找回原来的游戏名单和截图键。
+
+文件读得出来、但某一项的值不对时（比如 `poll_interval_sec` 写成 0 或 `null`、`games` 写成 `null`、开关写成 `"yes"`），只有那一项用默认值，其他项照常生效；`games` / `launchers` 里个别项不对时只去掉那几项。这种情况同样先把原文件另存为 `config.invalid_<日期_时间>.json`，日志里写明是哪一项、为什么。秒数的下限：`poll_interval_sec` 不小于 0.1，`exit_grace_sec`、`wait_no_launcher_sec` 不小于 0。
+
+保存设置时 config.json 被别的程序（杀毒软件、同步盘）短暂占着，GameSnap 会重试约 1 秒；仍保存不上就提示「设置没保存上（config.json 被占用），详见日志」。这次改的设置照样生效，等下次保存设置时再写进文件。
+
+启动时 config.json 被占着，同样重试约 1 秒。仍读不出来、也没能另存一份时，GameSnap 弹窗提醒，这次用默认配置运行（游戏名单也是默认的），设置不写回文件，原来的 config.json 不会被改动；退出后等占着它的程序结束，再打开就恢复了。
+
 - `games`：游戏名单，`{"进程名.exe": "文件夹名"}`。默认包含原神、云原神、星穹铁道、绝区零、崩坏3、yuzu（Switch 模拟器）。用托盘菜单「添加游戏…」加、「游戏名单」移除最方便（见「加别的游戏」）；手加的话，进程名可在任务管理器的「详细信息」页里查到。
 - `save_dir`：截图根目录。留空就是 `图片\GameShots`。
 - `hotkey`：截图键。建议用托盘菜单改，不要手改。
@@ -151,7 +160,7 @@ PS5 手柄（DualSense）用 USB 连接玩原神时，手柄的声音设备要�
 - `exit_grace_sec` / `wait_no_launcher_sec`：上面自动退出规则里的 10 秒和 60 秒。
 - `dualsense_quad`：DualSense 自动四声道，默认 `true`，和托盘菜单里的开关是同一个。
 
-日志在 `%APPDATA%\GameSnap\gamesnap.log`。截出黑屏或感觉有延迟时，可以先看这里。
+日志在 `%APPDATA%\GameSnap\gamesnap.log`，超过 1 MB 时旧内容挪到 `gamesnap.log.1`。别的程序或另一个 GameSnap 正开着它时挪不动，就接着往原文件写，之后再挪。日志被别的程序禁写时，这次不写日志，GameSnap 照常运行。截出黑屏或感觉有延迟时，可以先看这里。提示「按键监听没启动起来，截图键暂时无效」时，截图键、更换截图键、添加游戏都暂时用不了，原因记在日志里；之后检测到游戏、或点「更换截图键…」「添加游戏…」时会重试。
 
 GameSnap 如果突然消失（日志最后没有「退出」那一行），说明崩溃了。崩溃时各线程执行到哪一行会记在同一个文件夹的 `crash.log` 里，发给我即可。这个文件每次启动只会多一行时间戳。
 
@@ -167,7 +176,7 @@ D:\anaconda3\envs\gamesnap-build\python.exe -X utf8 tests\run_tests.py   # 跑�
 
 打包时会把 `tools\svcl\` 一起放进去（见「DualSense 手柄震动」）。没有 `tools\svcl\svcl.exe` 时 build.py 会给出警告，打出来的版本只提醒、不自动改。
 
-打包成文件夹版（约 40MB、93 个文件），不打成单个 exe。单文件版每次启动都要先往 `%TEMP%` 解压约 64MB，多花约 1 秒，还多一个进程；被强制结束时，解压目录还会残留。
+打包成文件夹版（约 40MB、92 个文件），不打成单个 exe。单文件版每次启动都要先往 `%TEMP%` 解压约 64MB，多花约 1 秒，还多一个进程；被强制结束时，解压目录还会残留。
 
 命令行参数：
 - `--launch 程序或链接`：同时启动这个程序，也可以是 `steam://rungameid/…` 这类链接；`--launch-args 参数`：传给它的参数；
@@ -177,11 +186,11 @@ D:\anaconda3\envs\gamesnap-build\python.exe -X utf8 tests\run_tests.py   # 跑�
 
 ## 旧版备份
 
-`backup\v1_onefile_dxcam\` 里是改版前的单文件 `GameSnap.exe` 和源码。那一版用 dxcam 截图，游戏中约占 105MB。要退回旧版，把六个快捷方式（桌面和开始菜单里各三个）的目标都改成那里的 `GameSnap.exe` 即可。
+`backup\v1_onefile_dxcam\` 里是改版前的单文件 `GameSnap.exe` 和源码。那一版用 dxcam 截图，游戏中约占 105MB。要退回旧版，把七个快捷方式（桌面和开始菜单里各三个，开始菜单另有一个 `GameSnap.lnk`）的目标都改成那里的 `GameSnap.exe` 即可。
 
-`backup\v2_wgc_close_session\` 里是 2026-10-29 修复前的文件夹版（`GameSnap\GameSnap.exe`）和源码。那一版游戏切走或退出时会关闭截图会话，偶尔因此崩溃。要退回这一版，把六个快捷方式的目标都改成那里的 `GameSnap\GameSnap.exe` 即可。
+`backup\v2_wgc_close_session\` 里是 2026-10-29 修复前的文件夹版（`GameSnap\GameSnap.exe`）和源码。那一版游戏切走或退出时会关闭截图会话，偶尔因此崩溃。要退回这一版，把七个快捷方式的目标都改成那里的 `GameSnap\GameSnap.exe` 即可。
 
-`backup\v3_wgc_keep_session\` 里是 2026-10-30 加 DualSense 功能之前的文件夹版（`GameSnap\GameSnap.exe`）和源码。要退回这一版，同样把六个快捷方式的目标都改成那里的 `GameSnap\GameSnap.exe`。只是不想要 DualSense 功能的话，不用退回，在托盘菜单里关掉即可。
+`backup\v3_wgc_keep_session\` 里是 2026-10-30 加 DualSense 功能之前的文件夹版（`GameSnap\GameSnap.exe`）和源码。要退回这一版，同样把七个快捷方式的目标都改成那里的 `GameSnap\GameSnap.exe`。只是不想要 DualSense 功能的话，不用退回，在托盘菜单里关掉即可。
 
 `backup\v4_dualsense\` 里是 2026-10-31 加 yuzu 之前的文件夹版（`GameSnap\GameSnap.exe`）和源码。退回这一版后 yuzu 照样能截（yuzu 写在 config.json 的游戏名单里），只是截图都放进 `GameShots\yuzu\`，不按游戏分。
 
